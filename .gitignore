@@ -100,3 +100,6 @@ desktop.ini
 # Local project files
 .pytest_cache/
 .mypy_cache/
+
+# results
+results_new_model/

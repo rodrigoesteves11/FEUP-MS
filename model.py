@@ -1,334 +1,564 @@
 """
-Modelo de mercado financeiro com agentes heterogéneos.
+model.py
+
+Mercado ABM sem livro de ordens:
+- Specialist ajusta preço por tâtonnement:
+    P <- P * exp( eta * Z(P) / Q )
+  onde Z(P) = sum_i delta_q_eff_i(P)
+
+- Cada agente calcula mu_i,t = E_t[P_{t+1} + D_{t+1}] no início do step.
+- A ordem desejada é baseada numa posição-alvo (exposição em euros) limitada por tanh.
+
+Regulação fixa via policy:
+- none / moderate / excessive
+- aplica taxa, short ban, leverage/margem, q_max e C_min.
 """
 
+from __future__ import annotations
+
 import math
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple, List
+
 import mesa
 from mesa.datacollection import DataCollector
+
 from agents import FundamentalistAgent, ChartistAgent, NoiseAgent
 
 
-def compute_gini(values):
-    """Calcula o coeficiente de Gini para uma lista de valores."""
-    if len(values) == 0:
-        return 0.0
-    values = sorted(values)
+# ----------------------------
+# Utilitários
+# ----------------------------
+
+def compute_gini_nonnegative(values: List[float]) -> float:
+    """
+    Gini standard requer valores não-negativos.
+    Aqui assumimos que `values` já foram clipados para >=0.
+    """
     n = len(values)
-    total = sum(values)
-    if total == 0:
+    if n == 0:
         return 0.0
-    cumsum = 0
-    gini_sum = 0
-    for i, v in enumerate(values):
-        cumsum += v
-        gini_sum += (2 * (i + 1) - n - 1) * v
-    return gini_sum / (n * total)
+    total = sum(values)
+    if total <= 0:
+        return 0.0
+
+    values_sorted = sorted(values)
+    cum = 0.0
+    gsum = 0.0
+    for i, v in enumerate(values_sorted, start=1):
+        cum += v
+        gsum += (2 * i - n - 1) * v
+    return gsum / (n * total)
+
+
+def clip(x: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, x))
+
+
+# ----------------------------
+# Políticas
+# ----------------------------
+
+@dataclass(frozen=True)
+class PolicyParams:
+    tau: float              # taxa transação (proporcional)
+    L_max: float            # limite de alavancagem (exposição <= L_max * W_base)
+    short_ban: bool         # se True, impõe q >= 0
+    q_max: float            # limite superior de posição (shares); use math.inf para "sem"
+    C_min: float            # cash mínimo permitido; use -math.inf para "sem"
+
+
+POLICY_PRESETS: Dict[str, PolicyParams] = {
+    "none": PolicyParams(
+        tau=0.0,
+        L_max=math.inf,
+        short_ban=False,
+        q_max=math.inf,
+        C_min=-math.inf,
+    ),
+    "moderate": PolicyParams(
+        tau=0.003,      # 0.3%
+        L_max=1.3,
+        short_ban=False,
+        q_max=math.inf,
+        C_min=-math.inf,
+    ),
+    "excessive": PolicyParams(
+        tau=0.01,       # 1%
+        L_max=1.0,
+        short_ban=True,
+        q_max=2.0,  # podes pôr um valor finito se quiseres endurecer mais
+        C_min=0.0,
+    ),
+}
 
 
 class MarketModel(mesa.Model):
-    """Modelo principal - clearing Σq(P)=Q e dinâmica de dividendos."""
-    
+    """
+    Modelo principal do mercado com:
+    - 3 tipos fixos de agentes
+    - price discovery por tâtonnement
+    - políticas de regulação fixa aplicadas às ordens
+    """
+
     def __init__(
         self,
-        n_fundamentalists=10,
-        n_chartists=10,
-        n_noise=10,
-        initial_price=20.0,
-        initial_dividend=1.0,
-        r=0.05,
-        Q=15.0,
-        d_bar=1.0,
-        rho=0.95,
-        sigma_d=0.12,
-        initial_wealth=500.0,
-        risk_aversion=1.0,
-        perceived_variance=2.5,   # Var(P+D) em euros² (não % de retorno)
-        heterogeneity_delta=0.7,  # δ para heterogeneidade (0.2-0.5)
-        L=10,
-        chi=0.45,
-        lambda_=0.3,
-        sigma_n=1.5,              # Ruído em euros (compatível com preços)
-        seed=None
+        # Agentes
+        n_fundamentalists: int = 100,
+        n_chartists: int = 100,
+        n_noise: int = 100,
+
+        # Mercado
+        initial_price: float = 20.0,
+        initial_dividend: float = 1.0,
+        Q: float = 300.0,
+        r: float = 0.05,
+
+        # Dividendo
+        d_bar: float = 1.0,
+        rho: float = 0.95,
+        sigma_d: float = 0.15,
+
+        # Inicialização de riqueza/posições
+        initial_wealth: float = 1000.0,  # riqueza total inicial por agente (aprox.)
+        # preferências e risco heterogéneos (intervalos)
+        gamma_range: Tuple[float, float] = (0.5, 1.5),
+        sigma2_range: Tuple[float, float] = (1.0, 6.0),
+
+        # Parâmetros comportamentais (intervalos)
+        kappa_f_range: Tuple[float, float] = (0.05, 0.20),   # fundamentalistas
+        kappa_c_range: Tuple[float, float] = (0.5, 2.0),     # chartistas
+        chartist_L_choices: Tuple[int, ...] = (5, 20, 60),   # chartistas
+        sigma_n_range: Tuple[float, float] = (0.01, 0.05),   # noise (em log)
+
+        # Trading rule
+        beta: float = 1.0,
+        phi: float = 0.2,
+
+        # Tâtonnement
+        tatonnement_K: int = 20,
+        tatonnement_eta: float = 0.05,
+
+        # Política
+        policy_name: str = "none",
+
+        seed: Optional[int] = None,
     ):
         super().__init__(seed=seed)
-        
-        # ===== VALIDATIONS (GUARDRAILS) =====
-        if Q <= 0:
-            raise ValueError("Q (stock supply) must be positive")
-        if r <= 0:
-            raise ValueError("r (risk-free rate) must be positive")
-        if risk_aversion <= 0:
-            raise ValueError("risk_aversion must be positive")
-        if perceived_variance <= 0:
-            raise ValueError("perceived_variance must be positive")
-        if L < 1:
-            raise ValueError("L (moving average window) must be >= 1")
-        if not (0 < rho < 1):
-            raise ValueError("rho must be between 0 and 1 (exclusive)")
-        if sigma_d < 0:
-            raise ValueError("sigma_d must be non-negative")
-        if sigma_n < 0:
-            raise ValueError("sigma_n must be non-negative")
+
+        # ----- Guardrails básicos -----
         if initial_price <= 0:
-            raise ValueError("initial_price must be positive")
+            raise ValueError("initial_price must be > 0")
         if initial_dividend < 0:
-            raise ValueError("initial_dividend must be non-negative")
-        if initial_wealth <= 0:
-            raise ValueError("initial_wealth must be positive")
+            raise ValueError("initial_dividend must be >= 0")
+        if Q <= 0:
+            raise ValueError("Q must be > 0")
+        if r <= 0:
+            raise ValueError("r must be > 0")
         if d_bar <= 0:
-            raise ValueError("d_bar (mean dividend) must be positive")
-        if not (0 <= heterogeneity_delta < 1):
-            raise ValueError("heterogeneity_delta must be in [0, 1)")
-        
-        # ===== PARÂMETROS DO MERCADO =====
-        self.r = r                  # Taxa de juro sem risco
-        self.Q = Q                  # Quantidade total de ações (oferta fixa)
-        self.d_bar = d_bar          # Média histórica dos dividendos (d̄)
-        self.rho = rho              # Persistência dos dividendos (ρ)
-        self.sigma_d = sigma_d      # Volatilidade dos dividendos (σ_d)
-        self.L = L                  # Janela da média móvel (para chartistas)
-        
-        # ===== ESTADO DO MERCADO =====
-        self.price = initial_price          # P_t (preço atual)
-        self.prev_price = initial_price     # P_{t-1} para log returns
-        self.dividend = initial_dividend    # D_t (dividendo atual)
-        self.price_history = [initial_price] * (L + 1)  # Histórico para chartistas
-        
-        # ===== MÉTRICAS AVANÇADAS =====
-        self.step_count = 0                 # Contador de steps
-        self.peak_price = initial_price     # Preço máximo (para drawdown)
-        self.volume = 0.0                   # Volume de transações
-        self.log_returns = []               # Histórico de log returns
-        self.initial_total_wealth = initial_wealth * (n_fundamentalists + n_chartists + n_noise)
-        
-        # ===== CRIAÇÃO DOS AGENTES COM HETEROGENEIDADE =====
-        delta = heterogeneity_delta
-        
-        for _ in range(n_fundamentalists):
-            # α_i ~ U(α(1-δ), α(1+δ))
-            alpha_i = self.random.uniform(
-                risk_aversion * (1 - delta),
-                risk_aversion * (1 + delta)
+            raise ValueError("d_bar must be > 0")
+        if not (0 < rho < 1):
+            raise ValueError("rho must be in (0,1)")
+        if sigma_d < 0:
+            raise ValueError("sigma_d must be >= 0")
+        if beta <= 0:
+            raise ValueError("beta must be > 0")
+        if not (0 < phi <= 1):
+            raise ValueError("phi must be in (0,1]")
+        if tatonnement_K <= 0:
+            raise ValueError("tatonnement_K must be > 0")
+        if tatonnement_eta <= 0:
+            raise ValueError("tatonnement_eta must be > 0")
+        if policy_name not in POLICY_PRESETS:
+            raise ValueError(f"Unknown policy_name: {policy_name}")
+
+        self.policy_name = policy_name
+        self.policy = POLICY_PRESETS[policy_name]
+
+        # ----- Parâmetros do mercado -----
+        self.Q = float(Q)
+        self.r = float(r)
+        self.d_bar = float(d_bar)
+        self.rho = float(rho)
+        self.sigma_d = float(sigma_d)
+
+        self.beta = float(beta)
+        self.phi = float(phi)
+
+        self.tatonnement_K = int(tatonnement_K)
+        self.tatonnement_eta = float(tatonnement_eta)
+
+        # ----- Estado do mercado -----
+        self.price = float(initial_price)        # P_t
+        self.prev_price = float(initial_price)   # P_{t-1}
+        self.dividend = float(initial_dividend)  # D_t (dividendo "corrente", pago no início do step)
+        self.step_count = 0
+
+        # Histórico para momentum
+        self.max_L = max(chartist_L_choices) if chartist_L_choices else 1
+        self.price_history: List[float] = [self.price] * (self.max_L + 1)
+
+        # Specialist inventory (para conservar total de shares)
+        self.specialist_inventory = 0.0
+
+        # Métricas intra-step
+        self.volume = 0.0
+        self.peak_price = self.price
+
+        # ----- Criar agentes e distribuir shares iniciais -----
+        N = int(n_fundamentalists + n_chartists + n_noise)
+        if N <= 0:
+            raise ValueError("Total number of agents must be > 0")
+
+        # Distribuição inicial de shares: soma(q_i) = Q e specialist começa com 0
+        q0 = self.Q / N
+        # Cash inicial para que wealth ~ initial_wealth:
+        # C0 = W0 - q0 * P0
+        C0 = float(initial_wealth) - q0 * self.price
+        if C0 < 0:
+            raise ValueError(
+                "initial_wealth too low for initial share endowment. "
+                "Increase initial_wealth or reduce Q or initial_price."
             )
-            # σ²_i ~ U(σ²(1-δ), σ²(1+δ))
-            sigma2_i = self.random.uniform(
-                perceived_variance * (1 - delta),
-                perceived_variance * (1 + delta)
-            )
+
+        # Funções de amostragem heterogénea
+        def sample_uniform(lo_hi: Tuple[float, float]) -> float:
+            lo, hi = lo_hi
+            if lo <= 0 or hi <= 0 or hi < lo:
+                raise ValueError(f"Invalid range {lo_hi}")
+            return self.random.uniform(lo, hi)
+
+        # Criar fundamentalistas
+        for _ in range(int(n_fundamentalists)):
+            gamma_i = sample_uniform(gamma_range)
+            sigma2_i = sample_uniform(sigma2_range)
+            kappa_f = self.random.uniform(*kappa_f_range)
             FundamentalistAgent(
                 model=self,
-                initial_wealth=initial_wealth,
-                risk_aversion=alpha_i,
-                perceived_variance=sigma2_i,
-                rho=rho
+                cash=C0,
+                shares=q0,
+                gamma=gamma_i,
+                sigma2=sigma2_i,
+                kappa_f=kappa_f,
             )
-        
-        for _ in range(n_chartists):
-            alpha_i = self.random.uniform(
-                risk_aversion * (1 - delta),
-                risk_aversion * (1 + delta)
-            )
-            sigma2_i = self.random.uniform(
-                perceived_variance * (1 - delta),
-                perceived_variance * (1 + delta)
-            )
+
+        # Criar chartistas
+        for _ in range(int(n_chartists)):
+            gamma_i = sample_uniform(gamma_range)
+            sigma2_i = sample_uniform(sigma2_range)
+            L_i = int(self.random.choice(chartist_L_choices))
+            kappa_c = self.random.uniform(*kappa_c_range)
             ChartistAgent(
                 model=self,
-                initial_wealth=initial_wealth,
-                risk_aversion=alpha_i,
-                perceived_variance=sigma2_i,
-                L=L,
-                chi=chi,
-                lambda_=lambda_
+                cash=C0,
+                shares=q0,
+                gamma=gamma_i,
+                sigma2=sigma2_i,
+                L=L_i,
+                kappa_c=kappa_c,
             )
-        
-        for _ in range(n_noise):
-            alpha_i = self.random.uniform(
-                risk_aversion * (1 - delta),
-                risk_aversion * (1 + delta)
-            )
-            sigma2_i = self.random.uniform(
-                perceived_variance * (1 - delta),
-                perceived_variance * (1 + delta)
-            )
+
+        # Criar noise traders
+        for _ in range(int(n_noise)):
+            gamma_i = sample_uniform(gamma_range)
+            sigma2_i = sample_uniform(sigma2_range)
+            sigma_n = self.random.uniform(*sigma_n_range)
             NoiseAgent(
                 model=self,
-                initial_wealth=initial_wealth,
-                risk_aversion=alpha_i,
-                perceived_variance=sigma2_i,
-                sigma_n=sigma_n
+                cash=C0,
+                shares=q0,
+                gamma=gamma_i,
+                sigma2=sigma2_i,
+                sigma_n=sigma_n,
             )
-        
-        # ===== DATA COLLECTOR =====
+
+        # ----- DataCollector -----
         self.datacollector = DataCollector(
             model_reporters={
-                # Preços
-                "Price": lambda m: m.price,
-                "FundamentalPrice": lambda m: (m.d_bar/m.r) + (m.rho/(1+m.r-m.rho))*(m.dividend - m.d_bar),
-                "Dividend": lambda m: m.dividend,
-                
-                # Mispricing
-                "Mispricing": lambda m: m.price - (m.d_bar + m.rho*(m.dividend - m.d_bar)) / m.r,
-                
-                # Returns e Volatilidade
-                "LogReturn": lambda m: m.log_returns[-1] if m.log_returns else 0.0,
-                "VolatilityRolling": lambda m: m._compute_rolling_volatility(20),
-                
-                # Volume (proxy de liquidez)
-                "Volume": lambda m: m.volume,
-                
-                # Riqueza descontada
-                "TotalWealthDisc": lambda m: sum(a.wealth for a in m.agents) / ((1 + m.r) ** m.step_count) if m.step_count > 0 else sum(a.wealth for a in m.agents),
-                
-                # Gini (desigualdade)
-                "GiniWealth": lambda m: compute_gini([a.wealth / ((1 + m.r) ** m.step_count) if m.step_count > 0 else a.wealth for a in m.agents]),
-                
-                # Drawdown (negativo = queda desde pico)
-                "Drawdown": lambda m: (m.price - m.peak_price) / m.peak_price if m.peak_price > 0 else 0.0,
-                
-                # Crashes e Bolhas (k=2 é menos exigente que k=3)
-                "IsCrash": lambda m: m._is_crash(k=2),
-                "BubbleRatio": lambda m: m.price / ((m.d_bar + m.rho*(m.dividend - m.d_bar)) / m.r) if m.r > 0 else 1.0,
-                
-                # Controlo
-                "TotalWealth": lambda m: sum(a.wealth for a in m.agents),
-                "TotalShares": lambda m: sum(a.shares for a in m.agents),
-                "MeanShares": lambda m: sum(a.shares for a in m.agents) / len(m.agents) if len(m.agents) > 0 else 0,
-                "SharesError": lambda m: abs(sum(a.shares for a in m.agents) - m.Q),
                 "Step": lambda m: m.step_count,
+                "Policy": lambda m: m.policy_name,
+                "Price": lambda m: m.price,
+                "Dividend": lambda m: m.dividend,
+                "FundamentalPrice": lambda m: m.fundamental_price(m.dividend),
+                "Mispricing": lambda m: m.price - m.fundamental_price(m.dividend),
+                "BubbleRatio": lambda m: (m.price / m.fundamental_price(m.dividend)) if m.fundamental_price(m.dividend) > 0 else 1.0,
+                "LogReturn": lambda m: math.log(m.price / m.prev_price) if (m.prev_price > 0 and m.price > 0) else 0.0,
+                "Volume": lambda m: m.volume,
+                "Turnover": lambda m: (m.volume / m.Q) if m.Q > 0 else 0.0,
+                "PeakPrice": lambda m: m.peak_price,
+                "Drawdown": lambda m: (m.price - m.peak_price) / m.peak_price if m.peak_price > 0 else 0.0,
+                "TotalWealth": lambda m: sum(a.cash + a.shares * m.price for a in m.agents),
+                "TotalWealthDisc": lambda m: (sum(a.cash + a.shares * m.price for a in m.agents) / ((1 + m.r) ** m.step_count)) if m.step_count > 0 else sum(a.cash + a.shares * m.price for a in m.agents),
+                "GiniWealth": lambda m: compute_gini_nonnegative([max(0.0, a.cash + a.shares * m.price) for a in m.agents]),
+                "GiniWealthDisc": lambda m: compute_gini_nonnegative([max(0.0, (a.cash + a.shares * m.price) / ((1 + m.r) ** m.step_count) if m.step_count > 0 else (a.cash + a.shares * m.price)) for a in m.agents]),
+                "NegWealthShare": lambda m: (sum(1 for a in m.agents if (a.cash + a.shares * m.price) < 0) / len(m.agents)) if len(m.agents) > 0 else 0.0,
+                "SharesAgents": lambda m: sum(a.shares for a in m.agents),
+                "SpecialistInv": lambda m: m.specialist_inventory,
             },
             agent_reporters={
-                "Wealth": lambda a: a.wealth,
-                "WealthDisc": lambda a: a.wealth / ((1 + a.model.r) ** a.model.step_count) if a.model.step_count > 0 else a.wealth,
-                "WealthShare": lambda a: a.wealth / sum(ag.wealth for ag in a.model.agents) if sum(ag.wealth for ag in a.model.agents) > 0 else 0,
+                "Cash": lambda a: a.cash,
                 "Shares": lambda a: a.shares,
+                "Wealth": lambda a: a.cash + a.shares * a.model.price,
+                "WealthDisc": lambda a: ((a.cash + a.shares * a.model.price) / ((1 + a.model.r) ** a.model.step_count)) if a.model.step_count > 0 else (a.cash + a.shares * a.model.price),
                 "AgentType": lambda a: type(a).__name__,
             }
         )
-    
-    def _compute_rolling_volatility(self, window=20):
-        """Calcula volatilidade rolling dos log returns."""
-        if len(self.log_returns) < 2:
+
+        # Coletar estado inicial (Step=0)
+        self.datacollector.collect(self)
+
+    # ----------------------------
+    # Fundamental e dividendo
+    # ----------------------------
+
+    def fundamental_price(self, D_t: float) -> float:
+        """
+        PV do AR(1):
+            P*_t = d_bar/r + rho/(1+r-rho) * (D_t - d_bar)
+        """
+        return (self.d_bar / self.r) + (self.rho / (1 + self.r - self.rho)) * (D_t - self.d_bar)
+
+    def next_dividend(self) -> float:
+        """
+        AR(1) com choque normal:
+            D_{t+1} = d_bar + rho(D_t - d_bar) + sigma_d * eps
+        com truncagem a >=0.
+        """
+        eps = self.random.gauss(0.0, 1.0)
+        D_next = self.d_bar + self.rho * (self.dividend - self.d_bar) + self.sigma_d * eps
+        return max(0.0, D_next)
+
+    # ----------------------------
+    # Liquidação e ordens
+    # ----------------------------
+
+    def _settle_cash_and_dividends(self):
+        """
+        Liquidação no início do step:
+          C <- C(1+r) + q*D_t
+        e fixa wealth_base (W_base) para o step.
+        """
+        for a in self.agents:
+            a.cash *= (1.0 + self.r)
+            a.cash += a.shares * self.dividend
+
+        # wealth_base fixado com P_t (preço antes do clearing)
+        for a in self.agents:
+            a.wealth_base = a.cash + a.shares * self.price
+
+    def _desired_delta_q(self, a, P_candidate: float) -> float:
+        """
+        Ordem desejada (antes de regulação), conforme:
+          Delta mu(P) = mu_i - (1+r)P
+          x* = W_base * tanh( beta * Delta mu / (gamma*sigma2) )
+          q* = x* / P
+          delta_q = phi * (q* - q)
+        """
+        if P_candidate <= 0:
             return 0.0
-        recent = self.log_returns[-window:]
-        if len(recent) < 2:
+
+        W = a.wealth_base
+        q = a.shares
+
+        # se W <= 0: tenta reduzir risco -> alvo 0
+        if W <= 0:
+            q_star = 0.0
+            return self.phi * (q_star - q)
+
+        delta_mu = a.mu - (1.0 + self.r) * P_candidate
+        denom = a.gamma * a.sigma2
+        if denom <= 0:
             return 0.0
-        mean = sum(recent) / len(recent)
-        variance = sum((r - mean) ** 2 for r in recent) / (len(recent) - 1)
-        return math.sqrt(variance)
-    
-    def _is_crash(self, k=3):
-        """Verifica se houve crash (log_return < -k * volatility)."""
-        if len(self.log_returns) < 2:
-            return False
-        vol = self._compute_rolling_volatility(20)
-        if vol <= 0:
-            return False
-        last_return = self.log_returns[-1]
-        return last_return < -k * vol
-    
-    def compute_clearing_price(self):
+
+        signal = self.beta * (delta_mu / denom)
+        x_star = W * math.tanh(signal)           # exposição alvo em euros
+        q_star = x_star / P_candidate           # ações alvo
+
+        return self.phi * (q_star - q)
+
+    def _apply_policy(self, a, P_candidate: float, delta_q: float) -> float:
         """
-        Clearing: resolve Σ q_i(P) = Q analiticamente.
-        
-        Com demanda escalada por wealth relativa:
-        q_i = scale_i * (E[P+D] - (1+r)P) / (α_i * σ²_i)
-        onde scale_i = W_i / W̄ (wealth relativa à média)
-        
-        A = Σ (scale_i / (α_i * σ²_i))
-        B = Σ (scale_i * E_i[P_{t+1} + D_{t+1}] / (α_i * σ²_i))
-        
-        P_t = (B - Q) / ((1+r) * A)
+        Aplica regras de regulação FIXAS na ordem, por esta ordem:
+
+        1) short ban (se ativo): q' >= 0
+        2) q_max (se definido): q' <= q_max
+        3) margem/alavancagem: |q'|P <= L_max * W_base
+        4) cash floor C_min: C' >= C_min
+
+        Retorna delta_q efetivo.
         """
-        A = 0.0
-        B = 0.0
-        
-        # Calcular média da wealth
-        mean_wealth = sum(a.wealth for a in self.agents) / len(self.agents)
-        
-        for agent in self.agents:
-            wealth_scale = agent.wealth / mean_wealth if mean_wealth > 0 else 1.0
-            inv_alpha_sigma = 1.0 / (agent.risk_aversion * agent.perceived_variance)
-            expected_payoff = agent.compute_expected_payoff()
-            
-            A += wealth_scale * inv_alpha_sigma
-            B += wealth_scale * expected_payoff * inv_alpha_sigma
-        
-        if A <= 0:
-            return self.price  # Fallback
-        
-        new_price = (B - self.Q) / ((1 + self.r) * A)
-        
-        return new_price
-    
-    def compute_next_dividend(self):
+        pol = self.policy
+        tau = pol.tau
+        L_max = pol.L_max
+        short_ban = pol.short_ban
+        q_max = pol.q_max
+        C_min = pol.C_min
+
+        if P_candidate <= 0:
+            return 0.0
+
+        q = a.shares
+        C = a.cash
+        W = a.wealth_base
+
+        # ---- Regra 1: short ban ----
+        q_prime = q + delta_q
+        if short_ban:
+            if q_prime < 0:
+                q_prime = 0.0
+                delta_q = q_prime - q
+
+        # ---- Regra 2: q_max ----
+        if q_max != math.inf:
+            if short_ban:
+                # long-only
+                q_prime = clip(q_prime, 0.0, q_max)
+            else:
+                # cap simétrico (permite short, mas limitado)
+                q_prime = clip(q_prime, -q_max, q_max)
+
+            delta_q = q_prime - q
+
+        # ---- Regra 3: margem/leverage ----
+        if L_max != math.inf:
+            # |q'| <= (L_max * W) / P
+            if W <= 0:
+                # se wealth_base <= 0, força a reduzir exposição
+                q_bound = 0.0
+            else:
+                q_bound = (L_max * W) / P_candidate
+
+            q_prime = clip(q_prime, -q_bound, q_bound)
+            delta_q = q_prime - q
+
+        # ---- Regra 4: cash floor ----
+        if C_min != -math.inf:
+            # C' = C - delta_q*P - tau*|delta_q|*P >= C_min
+            # Para buys (delta_q>0) pode restringir. Para sells, geralmente não.
+            if delta_q > 0:
+                max_buy = (C - C_min) / (P_candidate * (1.0 + tau)) if (P_candidate > 0) else 0.0
+                if max_buy < 0:
+                    max_buy = 0.0
+                delta_q = min(delta_q, max_buy)
+
+        return delta_q
+
+    def _effective_delta_q(self, a, P_candidate: float) -> float:
         """
-        Dividendo estocástico: D_{t+1} = d̄ + ρ(D_t - d̄) + ε_t
-        onde ε_t ~ N(0, σ²_d)
-        
-        Garante dividendo não-negativo.
+        Delta q desejado + regulação.
         """
-        epsilon = self.random.gauss(0, self.sigma_d)
-        new_dividend = self.d_bar + self.rho * (self.dividend - self.d_bar) + epsilon
-        return max(0.0, new_dividend)
-    
+        dq = self._desired_delta_q(a, P_candidate)
+        return self._apply_policy(a, P_candidate, dq)
+
+    # ----------------------------
+    # Tâtonnement e execução
+    # ----------------------------
+
+    def _tatonnement_price(self) -> float:
+        """
+        Descoberta de preço por tâtonnement com passo limitado (numérico robusto):
+        P^{k+1} = P^k * exp( eta * tanh( Z(P^k) / Q ) )
+
+        - Mantém P>0 por construção
+        - Impede overflow porque tanh(.) ∈ (-1, 1)
+        - Continua a reagir ao excesso de procura, mas sem saltos absurdos
+        """
+        P = self.price
+        Q = self.Q if self.Q > 0 else 1.0
+
+        for _ in range(self.tatonnement_K):
+            Z = 0.0
+            for a in self.agents:
+                Z += self._effective_delta_q(a, P)
+
+            # passo limitado em log-preço
+            delta_logP = self.tatonnement_eta * math.tanh(Z / Q)
+
+            P = P * math.exp(delta_logP)
+
+            if not math.isfinite(P) or P <= 0:
+                return self.price  # fallback conservador
+
+        return P
+
+    def _execute_trades(self, P_new: float):
+        """
+        Executa trades ao preço final P_new.
+        Atualiza (cash, shares) dos agentes, volume e inventory do specialist.
+        """
+        pol = self.policy
+        tau = pol.tau
+
+        total_delta = 0.0
+        volume = 0.0
+
+        # calcular e executar para cada agente
+        for a in self.agents:
+            dq_eff = self._effective_delta_q(a, P_new)
+
+            fee = tau * abs(dq_eff) * P_new
+            # atualizar posição
+            a.shares += dq_eff
+            # atualizar cash
+            a.cash -= dq_eff * P_new + fee
+
+            total_delta += dq_eff
+            volume += abs(dq_eff)
+
+        # Specialist absorve o desequilíbrio líquido
+        # Se total_delta > 0, agentes compraram líquido -> specialist vendeu -> inventory diminui
+        self.specialist_inventory -= total_delta
+
+        self.volume = volume
+
+    # ----------------------------
+    # Step principal
+    # ----------------------------
+
     def step(self):
         """
-        Executa um passo da simulação (ordem temporal correta):
-        1. Temos P_t, D_t e shares antigas q_{i,t} do período anterior
-        2. Agentes calculam expectativas E[P_{t+1}], E[D_{t+1}]
-        3. Clearing determina P_{t+1} que satisfaz Σq(P) = Q
-        4. Gera-se D_{t+1}
-        5. Atualiza-se riqueza W_{i,t+1} usando shares ANTIGAS q_{i,t}
-        6. Calcula-se novas shares q_{i,t+1} para o próximo período
+        Um step completo:
+
+        A) Liquidação: cash*=1+r e recebe dividendos D_t
+        B) Expectativas: agentes calculam mu_i,t
+        C) Tâtonnement: encontra P_{t+1}
+        D) Execução: trades ao preço P_{t+1} com política ativa
+        E) Atualiza dividendos: gera D_{t+1}
+        F) Atualiza métricas e recolhe dados
         """
-        # Guardar preço e shares antigos
+        # guardar preço anterior para log return
         self.prev_price = self.price
-        old_shares = {agent.unique_id: agent.shares for agent in self.agents}
-        
-        # Fase 1: Agentes calculam expectativas
+
+        # A) liquidação
+        self._settle_cash_and_dividends()
+
+        # B) expectativas
         self.agents.shuffle_do("step")
-        
-        # Fase 2: Calcular novo preço via clearing Σq(P) = Q
-        new_price = self.compute_clearing_price()
-        self.price_history.append(new_price)
-        self.price_history = self.price_history[-(self.L + 1):]
-        self.price = new_price
-        
-        # Calcular log return
-        if self.prev_price > 0 and new_price > 0:
-            log_ret = math.log(new_price / self.prev_price)
-            self.log_returns.append(log_ret)
-        
-        # Atualizar peak price para drawdown
-        if new_price > self.peak_price:
-            self.peak_price = new_price
-        
-        # Fase 3: Gerar novo dividendo
-        self.dividend = self.compute_next_dividend()
-        
-        # Fase 4: Atualizar riqueza usando shares ANTIGAS (do período anterior)
-        for agent in self.agents:
-            agent.update_wealth(self.prev_price)
-        
-        # Fase 5: Calcular novas shares para o próximo período
-        for agent in self.agents:
-            agent.shares = agent.compute_demand(new_price)
-        
-        # Calcular volume (soma das mudanças absolutas de shares)
-        self.volume = sum(abs(agent.shares - old_shares[agent.unique_id]) 
-                         for agent in self.agents)
-        
-        # Incrementar contador de passos
+
+        # C) descobre preço
+        P_new = self._tatonnement_price()
+
+        # D) executa trades
+        self._execute_trades(P_new)
+
+        # atualiza preço e histórico
+        self.price = P_new
+        self.price_history.append(self.price)
+        if len(self.price_history) > (self.max_L + 1):
+            self.price_history = self.price_history[-(self.max_L + 1):]
+
+        # peak/drawdown
+        if self.price > self.peak_price:
+            self.peak_price = self.price
+
+        # E) novo dividendo para o próximo período
+        self.dividend = self.next_dividend()
+
+        # step count e recolha
         self.step_count += 1
-        
-        # Recolher dados
         self.datacollector.collect(self)
-    
-    def run(self, steps):
-        """Executa a simulação por N passos."""
-        for _ in range(steps):
+
+    def run(self, steps: int):
+        for _ in range(int(steps)):
             self.step()
         return self.datacollector.get_model_vars_dataframe()
-
-
