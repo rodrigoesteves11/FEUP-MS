@@ -292,7 +292,7 @@ def plot_kpi_boxplots(results_df: pd.DataFrame, out_path: str):
 
     for ax, kpi in zip(axes, kpis):
         data = [results_df.loc[results_df["policy"] == p, kpi].dropna().values for p in policies]
-        ax.boxplot(data, tick_labels=policies, showfliers=False)
+        ax.boxplot(data, labels=policies, showfliers=False)
         ax.set_title(kpi)
         ax.grid(alpha=0.3)
 
