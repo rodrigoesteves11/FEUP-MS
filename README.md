@@ -9,10 +9,10 @@ Este projeto implementa um **modelo de simulação de mercado de ações baseado
 ## 📋 TODO List
 
 ### Implementação Core
-- [] verificar logica
-- [] corrigir visualização
-- [] testar sistema a mais de 50 steps 5 burn in (burn-in 10% dos steps)
-- [] verificar redundancias e algumas falhas.
+- [x] verificar logica
+- [x] corrigir visualização
+- [x] testar sistema a mais de 50 steps 5 burn in (burn-in 10% dos steps)
+- [x] verificar redundancias e algumas falhas.
 - Nota: sistema atual a 50 steps "tem logica" mas os resultados ainda sao dubios:
 
 **none (sem regulação)**
@@ -45,7 +45,8 @@ Conclusão: regulação excessiva destrói liquidez e piora a formação de pre�
 8. [Ciclo de Simulação (Step)](#ciclo-de-simulação-step)
 9. [Métricas e KPIs](#métricas-e-kpis)
 10. [Configuração e Execução](#configuração-e-execução)
-11. [Fórmulas Matemáticas Completas](#fórmulas-matemáticas-completas)
+11. [Visualização e Dashboards](#visualização-e-dashboards)
+12. [Fórmulas Matemáticas Completas](#fórmulas-matemáticas-completas)
 
 ---
 
@@ -53,11 +54,12 @@ Conclusão: regulação excessiva destrói liquidez e piora a formação de pre�
 
 ```
 FEUP-MS/
-├── agents.py          # Definição dos 3 tipos de agentes
-├── model.py           # Modelo principal do mercado (Mesa)
-├── run.py             # Runner de experiências e visualização
-├── requirements.txt   # Dependências Python
-└── README.md          # Este ficheiro
+├── agents.py           # Definição dos 3 tipos de agentes
+├── model.py            # Modelo principal do mercado (Mesa)
+├── run.py              # Runner de experiências (batch)
+├── app.py              # Dashboard interativo (SolaraViz)
+├── requirements.txt    # Dependências Python
+└── README.md           # Este ficheiro
 ```
 
 ---
@@ -523,6 +525,33 @@ results_new_model/
 ├── run_policy=moderate_seed=1.png
 └── run_policy=excessive_seed=1.png
 ```
+
+---
+
+## Visualização e Dashboards
+
+### Dashboard Interativo (SolaraViz)
+
+```bash
+# Primeiro, gerar os resultados
+python run.py
+
+# Depois, lançar o dashboard
+solara run app.py
+```
+
+O dashboard tem **duas páginas**:
+
+| Página | Descrição |
+|--------|-----------|
+| **Live Monitor** | Visualização em tempo real da simulação com gráficos de preço, mispricing, volume, drawdown, Gini e radar de risco |
+| **Aggregate** | Análise comparativa das 3 políticas com radar multi-policy e boxplots dos KPIs |
+
+**Funcionalidades do Live Monitor:**
+- Gráfico de preço vs fundamental com gap especulativo
+- Radar de risco compacto (Volatilidade, Crash, Iliquidez, Gini)
+- Painel de informação com estado atual e parâmetros da política
+- Controlo de play/pause e seleção de política/seed
 
 ---
 

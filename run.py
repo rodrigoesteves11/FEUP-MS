@@ -130,7 +130,7 @@ def compute_kpis(model_df: pd.DataFrame, burn_in: int) -> Dict[str, float]:
     bubble_ratio = df["BubbleRatio"]
     volume = df["Volume"]
     turnover = df["Turnover"]
-    gini = df["GiniWealthDisc"]  # recomendado (remove efeito mecânico do bond)
+    gini = df["GiniWealthDisc"]  # recommended (removes mechanical bond effect)
     drawdown = df["Drawdown"]
 
     # returns e vol rolling
@@ -166,144 +166,8 @@ def compute_kpis(model_df: pd.DataFrame, burn_in: int) -> Dict[str, float]:
     }
     return out
 
-
 # ----------------------------
-# Gráficos (por run)
-# ----------------------------
-
-def plot_single_run(model_df: pd.DataFrame, policy: str, seed: int, out_path: str, burn_in: int = 0):
-    df = model_df.copy()
-    if burn_in > 0:
-        df = df.iloc[burn_in:].reset_index(drop=True)
-
-    price = df["Price"]
-    fundamental = df["FundamentalPrice"]
-    mispricing = df["Mispricing"]
-    bubble_ratio = df["BubbleRatio"]
-    volume = df["Volume"]
-    gini = df["GiniWealthDisc"]
-    drawdown = df["Drawdown"]
-
-    logret = np.log(price / price.shift(1))
-    vol = rolling_std(logret, EVENTS["vol_window"])
-    crash_flag = (logret < (-EVENTS["crash_k"] * vol)) & vol.notna()
-
-    fig, axes = plt.subplots(4, 2, figsize=(14, 16))
-    fig.suptitle(f"Policy={policy} | Seed={seed} | burn_in={burn_in}", fontsize=14)
-
-    # 1) Price vs fundamental
-    ax = axes[0, 0]
-    ax.plot(price, label="Price")
-    ax.plot(fundamental, linestyle="--", label="Fundamental")
-    ax.set_title("Price vs Fundamental")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-    ax.legend()
-
-    # 2) Bubble ratio
-    ax = axes[0, 1]
-    ax.plot(bubble_ratio, label="P/P*")
-    ax.axhline(1.0, linewidth=1)
-    ax.axhline(EVENTS["bubble_threshold"], linestyle="--", linewidth=1, label="Bubble threshold")
-    ax.set_title("Bubble Ratio")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-    ax.legend()
-
-    # 3) Log returns
-    ax = axes[1, 0]
-    ax.plot(logret, linewidth=0.8)
-    ax.axhline(0.0, linewidth=1)
-    ax.set_title("Log Returns")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-
-    # 4) Rolling volatility
-    ax = axes[1, 1]
-    ax.plot(vol, linewidth=1.0)
-    ax.set_title(f"Rolling Volatility (window={EVENTS['vol_window']})")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-
-    # 5) Mispricing
-    ax = axes[2, 0]
-    ax.plot(mispricing, linewidth=1.0)
-    ax.axhline(0.0, linewidth=1)
-    ax.set_title("Mispricing (P - P*)")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-
-    # 6) Volume + rolling mean
-    ax = axes[2, 1]
-    ax.plot(volume, linewidth=0.8, alpha=0.7, label="Volume")
-    ax.plot(volume.rolling(20, min_periods=10).mean(), linewidth=1.5, label="Vol (roll mean 20)")
-    ax.set_title("Trading Volume")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-    ax.legend()
-
-    # 7) Gini (zoom se muito baixo)
-    ax = axes[3, 0]
-    ax.plot(gini, linewidth=1.0)
-    gmax = float(gini.max()) if len(gini) else 0.0
-    ax.set_ylim(0, max(0.01, gmax * 1.2))
-    ax.set_title("Gini (discounted wealth)")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-
-    # 8) Drawdown + crash markers
-    ax = axes[3, 1]
-    ax.plot(drawdown, linewidth=1.0, label="Drawdown")
-    crash_idx = crash_flag[crash_flag == True].index
-    if len(crash_idx) > 0:
-        ax.scatter(crash_idx, drawdown.loc[crash_idx], s=30, marker="v", label="Crash (ret criterion)")
-    ax.axhline(EVENTS["drawdown_crash"], linestyle="--", linewidth=1, label="DD crash threshold")
-    ax.set_title("Drawdown + Crashes")
-    ax.set_xlabel("t")
-    ax.grid(alpha=0.3)
-    ax.legend()
-
-    plt.tight_layout()
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    plt.savefig(out_path, dpi=150)
-    plt.close(fig)
-
-
-# ----------------------------
-# Gráficos comparativos (por cenário)
-# ----------------------------
-
-def plot_kpi_boxplots(results_df: pd.DataFrame, out_path: str):
-    policies = EXPERIMENT["policies"]
-
-    kpis = [
-        "vol_mean", "vol_max",
-        "mean_abs_mispricing",
-        "volume_mean",
-        "gini_final",
-        "max_drawdown",
-        "n_crashes_ret",
-        "n_bubbles",
-        "bubble_peak",
-    ]
-
-    fig, axes = plt.subplots(3, 3, figsize=(14, 12))
-    axes = axes.flatten()
-
-    for ax, kpi in zip(axes, kpis):
-        data = [results_df.loc[results_df["policy"] == p, kpi].dropna().values for p in policies]
-        ax.boxplot(data, labels=policies, showfliers=False)
-        ax.set_title(kpi)
-        ax.grid(alpha=0.3)
-
-    plt.tight_layout()
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    plt.savefig(out_path, dpi=150)
-    plt.close(fig)
-
-
-# ----------------------------
-# Runner principal
+# Main runner
 # ----------------------------
 
 def run_one(policy: str, seed: int, steps: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -311,6 +175,7 @@ def run_one(policy: str, seed: int, steps: int) -> Tuple[pd.DataFrame, pd.DataFr
         **CONFIG,
         policy_name=policy,
         seed=seed,
+        max_steps=steps
     )
     model_df = model.run(steps)
     agent_df = model.datacollector.get_agent_vars_dataframe()
@@ -334,9 +199,7 @@ def main():
     print()
 
     rows = []
-    # Guarda 1 run “representativa” por cenário (primeira seed)
-    representative_seed = seeds[0] if seeds else 1
-
+    
     for policy in policies:
         for seed in seeds:
             print(f"Running policy={policy} seed={seed} ...")
@@ -346,24 +209,12 @@ def main():
             kpis.update({"policy": policy, "seed": seed})
             rows.append(kpis)
 
-            # guardar gráficos só para seed representativa (para não gerar 90 imagens)
-            if seed == representative_seed:
-                fig_path = os.path.join(out_dir, f"run_policy={policy}_seed={seed}.png")
-                plot_single_run(model_df, policy, seed, fig_path, burn_in=burn_in)
-
     results_df = pd.DataFrame(rows)
     results_csv = os.path.join(out_dir, "kpi_results.csv")
     results_df.to_csv(results_csv, index=False)
 
-    # boxplots comparativos
-    boxplot_path = os.path.join(out_dir, "kpi_boxplots_by_policy.png")
-    plot_kpi_boxplots(results_df, boxplot_path)
-
     print("\n=== Done ===")
     print(f"Saved: {results_csv}")
-    print(f"Saved: {boxplot_path}")
-    print(f"Saved: run_policy=*_seed={representative_seed}.png (1 por cenário)")
-
     # print resumo por cenário
     print("\n=== KPI summary (mean ± std) ===")
     for policy in policies:

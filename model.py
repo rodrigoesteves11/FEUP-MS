@@ -143,6 +143,8 @@ class MarketModel(mesa.Model):
         policy_name: str = "none",
 
         seed: Optional[int] = None,
+        
+        max_steps: Optional[int] = 50,
     ):
         super().__init__(seed=seed)
 
@@ -172,6 +174,8 @@ class MarketModel(mesa.Model):
         if policy_name not in POLICY_PRESETS:
             raise ValueError(f"Unknown policy_name: {policy_name}")
 
+        self.max_steps = max_steps
+        
         self.policy_name = policy_name
         self.policy = POLICY_PRESETS[policy_name]
 
@@ -558,7 +562,12 @@ class MarketModel(mesa.Model):
         self.step_count += 1
         self.datacollector.collect(self)
 
+        if self.max_steps is not None and self.step_count >= int(self.max_steps):
+            self.running = False
+        
     def run(self, steps: int):
         for _ in range(int(steps)):
+            if not getattr(self, "running", True):
+                break
             self.step()
         return self.datacollector.get_model_vars_dataframe()
