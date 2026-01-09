@@ -13,14 +13,14 @@ from plotly.subplots import make_subplots
 import plotly.express as px
 
 
-def load_results(csv_path="results_new_model/kpi_results.csv"):
+def load_results(csv_path="../results_new_model/kpi_results.csv"):
     """Load the KPI results from run.py"""
     df = pd.read_csv(csv_path)
     print(f"Loaded {len(df)} simulation results")
     return df
 
 
-def create_interactive_dashboard(df, output_file="results_new_model/interactive_dashboard.html"):
+def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboard.html"):
     """Create interactive HTML dashboard with Plotly"""
     print("\nCreating interactive dashboard...")
     
@@ -275,7 +275,7 @@ def create_interactive_dashboard(df, output_file="results_new_model/interactive_
     print(f"   ✓ Botão 📷 no canto → exporta imagem PNG")
     
 
-def create_individual_seed_viewer(df, output_file="results_new_model/seed_explorer.html"):
+def create_individual_seed_viewer(df, output_file="dashboard/seed_explorer.html"):
     """Create an interactive viewer to explore individual seeds"""
     print("\nCreating seed explorer...")
     

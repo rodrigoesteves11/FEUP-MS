@@ -8,7 +8,7 @@ import seaborn as sns
 from scipy import stats
 import numpy as np
 
-def load_results(csv_path="results_new_model/kpi_results.csv"):
+def load_results(csv_path="../results_new_model/kpi_results.csv"):
     """Load the KPI results from run.py"""
     df = pd.read_csv(csv_path)
     print(f"Loaded {len(df)} simulation results")
@@ -16,7 +16,7 @@ def load_results(csv_path="results_new_model/kpi_results.csv"):
     print(f"Seeds per policy: {df.groupby('policy').size()}")
     return df
 
-def create_comprehensive_analysis(df, output_dir="results_new_model"):
+def create_comprehensive_analysis(df, output_dir="analysis_results"):
     """Create comprehensive analysis with multiple visualizations"""
     
     # 1. BOXPLOTS - Main comparison across policies
