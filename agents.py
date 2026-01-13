@@ -36,16 +36,16 @@ class TraderAgent(mesa.Agent):
         self.cash = float(cash)
         self.shares = float(shares)
 
-        # Preferências/risco
-        self.gamma = float(gamma)     # aversão ao risco
-        self.sigma2 = float(sigma2)   # var(payoff) em euros^2
 
-        # Expectativas (atualizadas em cada step)
+        self.gamma = float(gamma)
+        self.sigma2 = float(sigma2)
+
+
         self.expected_price = 0.0
         self.expected_dividend = 0.0
         self.mu = 0.0
 
-        # Wealth base fixada no início do step (após liquidação)
+
         self.wealth_base = 0.0
 
     def compute_expected_dividend(self) -> float:
@@ -62,7 +62,7 @@ class TraderAgent(mesa.Agent):
         self.expected_price = float(self.compute_expected_price())
         self.mu = self.expected_price + self.expected_dividend
 
-    # Utilitário: wealth mark-to-market no preço atual do modelo
+
     def wealth(self) -> float:
         return self.cash + self.shares * self.model.price
 
@@ -111,7 +111,7 @@ class ChartistAgent(TraderAgent):
         hist = self.model.price_history
 
         if self.L <= 0 or len(hist) <= self.L:
-            # Sem histórico suficiente: sem sinal
+
             return P_t
 
         P_t_L = hist[-(self.L + 1)]

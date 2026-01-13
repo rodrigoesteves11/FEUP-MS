@@ -30,38 +30,34 @@ import matplotlib.pyplot as plt
 from model import MarketModel, POLICY_PRESETS
 
 
-# ----------------------------
-# Configuração central
-# ----------------------------
-
 CONFIG = {
-    # mercado
+
     "initial_price": 20.0,
     "initial_dividend": 1.0,
     "Q": 300.0,
     "r": 0.05,
 
-    # dividendos
+
     "d_bar": 1.0,
     "rho": 0.95,
     "sigma_d": 0.15,
 
-    # riqueza/risco
+
     "initial_wealth": 1000.0,
     "gamma_range": (0.5, 1.5),
     "sigma2_range": (1.0, 6.0),
 
-    # comportamentos
+
     "kappa_f_range": (0.05, 0.20),
     "kappa_c_range": (0.5, 2.0),
     "chartist_L_choices": (5, 20, 60),
     "sigma_n_range": (0.01, 0.05),
 
-    # trading
+
     "beta": 1.0,
     "phi": 0.2,
 
-    # tatonnement
+
     "tatonnement_K": 50,
     "tatonnement_eta": 0.2,
 }
@@ -72,7 +68,7 @@ EXPERIMENT = {
     "seeds": list(range(1, 31)),
     "policies": ["none", "moderate", "excessive"],
 
-    # mixes (mantém N=300!)
+
     "agent_mixes": [
         {"mix": "balanced", "n_fundamentalists": 100, "n_chartists": 100, "n_noise": 100},
         {"mix": "F_high",   "n_fundamentalists": 150, "n_chartists": 75,  "n_noise": 75},
@@ -91,10 +87,6 @@ EVENTS = {
     "bubble_min_len": 5,
 }
 
-
-# ----------------------------
-# KPIs globais (igual ao teu run.py)
-# ----------------------------
 
 def rolling_std(x: pd.Series, window: int) -> pd.Series:
     return x.rolling(window=window, min_periods=max(2, window // 2)).std()
@@ -179,10 +171,6 @@ def compute_kpis(model_df: pd.DataFrame, burn_in: int) -> Dict[str, float]:
     }
 
 
-# ----------------------------
-# Runner
-# ----------------------------
-
 def run_one(policy: str, seed: int, steps: int, mix_cfg: Dict) -> pd.DataFrame:
     cfg = CONFIG.copy()
     cfg["n_fundamentalists"] = int(mix_cfg["n_fundamentalists"])
@@ -198,14 +186,10 @@ def run_one(policy: str, seed: int, steps: int, mix_cfg: Dict) -> pd.DataFrame:
     return model_df
 
 
-# ----------------------------
-# Matrizes robustas + heatmap simples
-# ----------------------------
-
 def make_policy_mix_matrix_median(results_df: pd.DataFrame, kpis: List[str],
                                   policies_order: List[str], mixes_order: List[str]) -> pd.DataFrame:
     """
-    Matriz (policy,mix) × KPIs usando MEDIANA (robusta a outliers).
+    Matriz (policy,mix) x KPIs usando MEDIANA (robusta a outliers).
     """
     mat = results_df.groupby(["policy", "mix"])[kpis].median()
     mat = mat.reindex(pd.MultiIndex.from_product([policies_order, mixes_order], names=["policy", "mix"]))
@@ -263,7 +247,7 @@ def main():
         print(f"  {p}: {POLICY_PRESETS[p]}")
     print()
 
-    # 1) correr sims
+
     rows = []
     for policy in policies:
         for mix_cfg in mixes:
@@ -289,19 +273,16 @@ def main():
     results_df.to_csv(csv_path, index=False)
     print("\nSaved:", csv_path)
 
-     # 2) KPIs "simples" e robustos para relatório
-    #    - drawdown_mag: magnitude positiva do drawdown (maior = pior)
-    #    - log_bubble_peak: opcional, evita explosões tipo e+47
     df = results_df.copy()
     df["drawdown_mag"] = -pd.to_numeric(df["max_drawdown"], errors="coerce")
 
     bp = pd.to_numeric(df["bubble_peak"], errors="coerce").clip(lower=1e-12)
     df["log_bubble_peak"] = np.log10(bp)
 
-    # Sugestão: manter poucos KPIs para ficar legível no relatório
+
     KPI_SIMPLE = ["vol_mean", "drawdown_mag", "volume_mean", "log_bubble_peak"]
 
-    # 3) matriz MEDIANA (raw)
+
     mat_median = make_policy_mix_matrix_median(df, KPI_SIMPLE, policies, mixes_order)
     median_csv = os.path.join(out_dir, "matrix_policy_mix_median_raw.csv")
     mat_median.to_csv(median_csv)
@@ -309,7 +290,7 @@ def main():
     print("\nMatrix (median raw):")
     print(mat_median)
 
-    # 4) heatmap de MEDIANAS (raw numbers), cores normalizadas por KPI (robusto)
+
     def robust_norm_by_column(x: pd.DataFrame, qlo: float = 0.10, qhi: float = 0.90) -> pd.DataFrame:
         out = x.copy()
         for c in out.columns:
@@ -341,13 +322,13 @@ def main():
         ax.set_yticks(range(mat_norm.shape[0]))
         ax.set_yticklabels(row_labels)
 
-        # separadores entre políticas (para leitura)
-        # assume ordem: [none x4, moderate x4, excessive x4]
+
+
         n_mix = len(mixes_order)
         for y in [n_mix - 0.5, 2 * n_mix - 0.5]:
             ax.axhline(y, color="black", linewidth=1)
 
-        # formatos por KPI (medianas)
+
         fmt_map = {
             "vol_mean": "{:.3f}",
             "drawdown_mag": "{:.2f}",

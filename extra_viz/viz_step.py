@@ -5,7 +5,7 @@ Versão simplificada - guarda frames como imagens para ver a evolução do que f
 """
 
 import matplotlib
-matplotlib.use('Agg')  # Backend sem GUI
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import numpy as np
@@ -25,13 +25,13 @@ def run_with_visualization(policy="none", steps=50, save_every=10, seed=None):
     print(f"Steps: {steps} | Saving every {save_every} steps | Seed: {seed}")
     print()
     
-    # Criar diretório
+
     out_dir = f"viz_output_{policy}"
     if seed is not None:
         out_dir = f"viz_output_{policy}_seed{seed}"
     os.makedirs(out_dir, exist_ok=True)
     
-    # Criar modelo
+
     model = MarketModel(
         n_fundamentalists=100,
         n_chartists=100,
@@ -62,7 +62,7 @@ def run_with_visualization(policy="none", steps=50, save_every=10, seed=None):
     print(f"Policy settings: {POLICY_PRESETS[policy]}")
     print()
     
-    # Correr simulação
+
     for step in range(steps):
         model.step()
         
@@ -76,7 +76,7 @@ def run_with_visualization(policy="none", steps=50, save_every=10, seed=None):
     print("=" * 70)
     print()
     
-    # Criar visualização final completa
+
     print("Creating final summary...")
     create_final_summary(model, out_dir)
     print(f"Final summary saved to: {out_dir}/final_summary.png")
@@ -186,7 +186,7 @@ def create_final_summary(model, out_dir):
     
     gs = GridSpec(4, 3, figure=fig, hspace=0.35, wspace=0.3)
     
-    # Gráficos
+
     plots = [
         (gs[0, :2], 'Price', ['Price', 'FundamentalPrice'], ['#0066cc', '#006600'], ['Price', 'Fundamental']),
         (gs[0, 2], 'BubbleRatio', ['BubbleRatio'], ['#ff6600'], ['Bubble Ratio']),
@@ -215,11 +215,11 @@ def create_final_summary(model, out_dir):
         if len(labels) > 1:
             ax.legend()
     
-    # Estatísticas finais
+
     ax = fig.add_subplot(gs[3, :])
     ax.axis('off')
     
-    # Calcular estatísticas
+
     burn_in = 5
     df_analysis = df.iloc[burn_in:]
     
@@ -247,7 +247,7 @@ def create_final_summary(model, out_dir):
 if __name__ == "__main__":
     import sys
     
-    # Argumentos obrigatórios: policy, steps (opcional), save_every (opcional), seed (opcional)
+
     if len(sys.argv) < 2:
         print("ERROR: Policy argument is required!")
         print(f"\nUsage: python3 viz_step.py <policy> [steps] [save_every] [seed]")
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     print(f"Policy: {policy.upper()}{seed_info} | Steps: {steps} | Save every: {save_every}")
     print("=" * 70)
     
-    # Correr
+
     model = run_with_visualization(policy=policy, steps=steps, save_every=save_every, seed=seed)
     
     print("\nYou can now:")

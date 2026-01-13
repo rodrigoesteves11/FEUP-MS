@@ -24,7 +24,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
     """Create interactive HTML dashboard with Plotly"""
     print("\nCreating interactive dashboard...")
     
-    # Create figure with subplots
+
     fig = make_subplots(
         rows=4, cols=3,
         subplot_titles=(
@@ -56,7 +56,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
     policies = ['none', 'moderate', 'excessive']
     colors = {'none': '#2ecc71', 'moderate': '#f39c12', 'excessive': '#e74c3c'}
     
-    # Row 1: Boxplots for main KPIs
+
     for policy in policies:
         df_policy = df[df['policy'] == policy]
         fig.add_trace(
@@ -78,7 +78,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             row=1, col=3
         )
     
-    # Row 2: More boxplots
+
     for policy in policies:
         df_policy = df[df['policy'] == policy]
         fig.add_trace(
@@ -100,11 +100,11 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             row=2, col=3
         )
     
-    # Row 3: Scatter plots showing relationships
+
     for policy in policies:
         df_policy = df[df['policy'] == policy]
         
-        # Crashes vs Volatility
+
         fig.add_trace(
             go.Scatter(
                 x=df_policy['vol_mean'], 
@@ -120,7 +120,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             row=3, col=1
         )
         
-        # Gini vs Mispricing
+
         fig.add_trace(
             go.Scatter(
                 x=df_policy['mean_abs_mispricing'],
@@ -136,7 +136,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             row=3, col=2
         )
         
-        # Volume vs Volatility
+
         fig.add_trace(
             go.Scatter(
                 x=df_policy['vol_mean'],
@@ -152,7 +152,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             row=3, col=3
         )
     
-    # Row 4: Aggregate comparisons
+
     metrics = ['vol_mean', 'mean_abs_mispricing', 'gini_mean', 'volume_mean']
     metric_names = ['Volatility', 'Mispricing', 'Gini', 'Volume']
     
@@ -171,7 +171,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             row=4, col=1
         )
     
-    # Seed-by-seed line plots
+
     for policy in policies:
         df_policy = df[df['policy'] == policy].sort_values('seed')
         fig.add_trace(
@@ -204,7 +204,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             row=4, col=3
         )
     
-    # Update layout
+
     fig.update_layout(
         title_text="<b>Interactive Dashboard - Market ABM Results (90 Simulations)</b><br>" +
                    "<i>INSTRUÇÕES: Clica UMA VEZ na legenda para esconder/mostrar | Clica DUAS VEZES para isolar | Arrasta para zoom</i>",
@@ -226,7 +226,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
         )
     )
     
-    # Update axes labels
+
     fig.update_xaxes(title_text="Policy", row=1, col=1)
     fig.update_xaxes(title_text="Policy", row=1, col=2)
     fig.update_xaxes(title_text="Policy", row=1, col=3)
@@ -251,7 +251,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
     fig.update_yaxes(title_text="Volatility", row=4, col=2)
     fig.update_yaxes(title_text="Gini", row=4, col=3)
     
-    # Save HTML
+
     config = {
         'displayModeBar': True,
         'displaylogo': False,
@@ -296,7 +296,6 @@ def create_individual_seed_viewer(df, output_file="dashboard/seed_explorer.html"
     policies = ['none', 'moderate', 'excessive']
     colors = {'none': '#2ecc71', 'moderate': '#f39c12', 'excessive': '#e74c3c'}
     
-    # Create scatter plot with all seeds
     for policy in policies:
         df_policy = df[df['policy'] == policy]
         fig.add_trace(
@@ -315,7 +314,6 @@ def create_individual_seed_viewer(df, output_file="dashboard/seed_explorer.html"
             row=1, col=1
         )
     
-    # Volatility vs Mispricing
     for policy in policies:
         df_policy = df[df['policy'] == policy]
         fig.add_trace(
@@ -333,7 +331,6 @@ def create_individual_seed_viewer(df, output_file="dashboard/seed_explorer.html"
             row=2, col=1
         )
     
-    # Gini vs Volume
     for policy in policies:
         df_policy = df[df['policy'] == policy]
         fig.add_trace(
@@ -402,7 +399,7 @@ def create_individual_seed_viewer(df, output_file="dashboard/seed_explorer.html"
         }
     }
     fig.write_html(output_file, config=config)
-    print(f"✅ Seed explorer saved: {output_file}")
+    print(f" Seed explorer saved: {output_file}")
     print(f"   Use para identificar seeds interessantes e depois correr:")
     print(f"   python3 viz_simple.py <policy> <steps> <seed>")
 
@@ -412,30 +409,27 @@ if __name__ == "__main__":
     print("INTERACTIVE DASHBOARD GENERATOR")
     print("="*70)
     
-    # Check if plotly is installed
     try:
         import plotly
         print(f"✓ Plotly version: {plotly.__version__}")
     except ImportError:
-        print("❌ ERROR: Plotly not installed!")
+        print(" ERROR: Plotly not installed!")
         print("   Install with: pip install plotly")
         print("   Or: python3 -m pip install plotly")
         exit(1)
     
-    # Load results
     df = load_results()
     
-    # Create interactive dashboards
     create_interactive_dashboard(df)
     create_individual_seed_viewer(df)
     
     print("\n" + "="*70)
     print("DASHBOARD CREATION COMPLETE!")
     print("="*70)
-    print("\n📊 Created 2 interactive HTML files:")
+    print("\n Created 2 interactive HTML files:")
     print("  1. interactive_dashboard.html - Main dashboard with all visualizations")
     print("  2. seed_explorer.html         - Explore individual seeds interactively")
-    print("\n🌐 How to use:")
+    print("\n How to use:")
     print("  - Double-click the HTML files to open in your browser")
     print("  - Hover over any point to see details")
     print("  - Click legend items to show/hide policies")

@@ -23,44 +23,39 @@ import matplotlib.pyplot as plt
 
 from model import MarketModel, POLICY_PRESETS
 
-
-# ----------------------------
-# Configuração central
-# ----------------------------
-
 CONFIG = {
-    # agentes
+
     "n_fundamentalists": 100,
     "n_chartists": 100,
     "n_noise": 100,
 
-    # mercado
+
     "initial_price": 20.0,
     "initial_dividend": 1.0,
     "Q": 300.0,
     "r": 0.05,
 
-    # dividendos
+
     "d_bar": 1.0,
     "rho": 0.95,
     "sigma_d": 0.15,
 
-    # riqueza/risco
+
     "initial_wealth": 1000.0,
     "gamma_range": (0.5, 1.5),
     "sigma2_range": (1.0, 6.0),
 
-    # comportamentos
+
     "kappa_f_range": (0.05, 0.20),
     "kappa_c_range": (0.5, 2.0),
     "chartist_L_choices": (5, 20, 60),
     "sigma_n_range": (0.01, 0.05),
 
-    # trading
+
     "beta": 1.0,
     "phi": 0.2,
 
-    # tatonnement
+
     "tatonnement_K": 50,
     "tatonnement_eta": 0.2,
 }
@@ -68,24 +63,19 @@ CONFIG = {
 EXPERIMENT = {
     "steps": 50,
     "burn_in": 5,
-    "seeds": list(range(1, 31)),  # 30 seeds
+    "seeds": list(range(1, 31)),
     "policies": ["none", "moderate", "excessive"],
     "out_dir": "results_new_model",
 }
 
-# thresholds para eventos
+
 EVENTS = {
     "vol_window": 20,
-    "crash_k": 2.0,               # crash: logret < -k * vol_rolling
-    "drawdown_crash": -0.25,      # crash alternativo por dd
-    "bubble_threshold": 1.5,      # bolha: ratio > 1.5
-    "bubble_min_len": 5,         # por >= 5 passos
+    "crash_k": 2.0,
+    "drawdown_crash": -0.25,
+    "bubble_threshold": 1.5,
+    "bubble_min_len": 5,
 }
-
-
-# ----------------------------
-# KPIs
-# ----------------------------
 
 def rolling_std(x: pd.Series, window: int) -> pd.Series:
     return x.rolling(window=window, min_periods=max(2, window // 2)).std()
@@ -138,26 +128,26 @@ def compute_kpis(model_df: pd.DataFrame, burn_in: int) -> Dict[str, float]:
     gini = pd.to_numeric(df["GiniWealthDisc"], errors="coerce")
     drawdown = pd.to_numeric(df["Drawdown"], errors="coerce")
 
-    # --- returns e vol rolling (robusto) ---
+
     eps = 1e-12
     logret = np.log(np.maximum(price, eps) / np.maximum(price.shift(1), eps))
     vol = rolling_std(logret, EVENTS["vol_window"])
 
-    # --- crashes por retorno: passos vs episódios ---
+
     crash_by_ret = (logret < (-EVENTS["crash_k"] * vol)) & vol.notna()
     crash_steps_ret = int(crash_by_ret.sum())
     crash_eps_ret, crash_dur_mean_ret = count_runs(crash_by_ret, min_len=1)
 
-    # --- crashes por drawdown: passos vs episódios ---
+
     crash_by_dd = (drawdown < EVENTS["drawdown_crash"])
     crash_steps_dd = int(crash_by_dd.sum())
     crash_eps_dd, crash_dur_mean_dd = count_runs(crash_by_dd, min_len=1)
 
-    # --- bolhas: aplicar bubble_min_len ---
+
     bubble_flag = (bubble_ratio > EVENTS["bubble_threshold"])
     n_bubbles, bubble_dur_mean = count_runs(bubble_flag, min_len=EVENTS["bubble_min_len"])
 
-    # mispricing relativo robusto
+
     rel_mispricing = (np.maximum(price, eps) / np.maximum(fundamental, eps)) - 1.0
 
     out = {
@@ -175,7 +165,7 @@ def compute_kpis(model_df: pd.DataFrame, burn_in: int) -> Dict[str, float]:
 
         "max_drawdown": float(np.nanmin(drawdown)),
 
-        # crashes (dois jeitos: passos e episódios)
+
         "crash_steps_ret": float(crash_steps_ret),
         "crash_episodes_ret": float(crash_eps_ret),
         "crash_dur_mean_ret": float(crash_dur_mean_ret),
@@ -184,7 +174,7 @@ def compute_kpis(model_df: pd.DataFrame, burn_in: int) -> Dict[str, float]:
         "crash_episodes_dd": float(crash_eps_dd),
         "crash_dur_mean_dd": float(crash_dur_mean_dd),
 
-        # bolhas (episódios com duração mínima)
+
         "n_bubbles": float(n_bubbles),
         "bubble_peak": float(np.nanmax(bubble_ratio)),
         "bubble_dur_mean": float(bubble_dur_mean),
@@ -204,40 +194,40 @@ def compute_agenttype_kpis(agent_df: pd.DataFrame, model_df: pd.DataFrame, burn_
     if agent_df is None or len(agent_df) == 0:
         return out
 
-    adf = agent_df.reset_index()  # normalmente MultiIndex: (Step, AgentID)
+    adf = agent_df.reset_index()
     if "AgentType" not in adf.columns or "Shares" not in adf.columns:
         return out
 
-    # descobrir Step e AgentID de forma robusta
+
     step_col = "Step" if "Step" in adf.columns else adf.columns[0]
     id_col = "AgentID" if "AgentID" in adf.columns else adf.columns[1]
 
-    # burn-in
+
     adf = adf[adf[step_col] >= burn_in].copy()
     if len(adf) == 0:
         return out
 
-    # juntar preço por step (para exposição)
+
     mdf = model_df.copy()
     if "Step" not in mdf.columns:
         mdf = mdf.reset_index()
     price_by_step = mdf[["Step", "Price"]].copy()
     adf = adf.merge(price_by_step, left_on=step_col, right_on="Step", how="left")
 
-    # ordenar e deltas de shares
+
     adf.sort_values([id_col, step_col], inplace=True)
     adf["dShares"] = adf.groupby(id_col)["Shares"].diff()
     adf["abs_dShares"] = adf["dShares"].abs()
 
-    # exposição média (por observação)
+
     price_num = pd.to_numeric(adf["Price"], errors="coerce")
     adf["abs_exposure_eur"] = adf["Shares"].abs() * price_num
 
-    # -------- A1: volume share --------
+
     vol_by_type = adf.groupby("AgentType")["abs_dShares"].sum(min_count=1)
     vol_total = float(vol_by_type.sum()) if pd.notna(vol_by_type.sum()) else 0.0
 
-    # -------- A2: exposure share (com base na exposição média) --------
+
     exp_by_type = adf.groupby("AgentType")["abs_exposure_eur"].mean()
     exp_total = float(exp_by_type.sum()) if pd.notna(exp_by_type.sum()) else 0.0
 
@@ -251,7 +241,7 @@ def compute_agenttype_kpis(agent_df: pd.DataFrame, model_df: pd.DataFrame, burn_
     return out
 
 def _short_agent_label(col_suffix: str) -> str:
-    # col_suffix vem tipo "FundamentalistAgent"
+
     s = col_suffix.replace("Agent", "")
     s = s.replace("Fundamentalist", "Fund")
     s = s.replace("Chartist", "Chart")
@@ -273,14 +263,14 @@ def make_policy_agent_matrix(results_df: pd.DataFrame, prefix: str, policies_ord
     mat = results_df.groupby("policy")[cols].mean()
     mat = mat.reindex(policies_order)
 
-    # renomear colunas para nomes curtos
+
     new_cols = {}
     for c in mat.columns:
         suffix = c[len(prefix):]
         new_cols[c] = _short_agent_label(suffix)
     mat = mat.rename(columns=new_cols)
 
-    # ordenar colunas por uma ordem “fixa” se existirem
+
     desired = ["Fund", "Chart", "Noise"]
     existing = [c for c in desired if c in mat.columns]
     remaining = [c for c in mat.columns if c not in existing]
@@ -307,21 +297,21 @@ def plot_two_heatmaps_side_by_side(
     titles = [title_left, title_right]
 
     for ax, mat, title in zip(axes, mats, titles):
-        im = ax.imshow(mat.values, aspect="auto", vmin=0.0, vmax=1.0)  # mesma escala p/ ambos
+        im = ax.imshow(mat.values, aspect="auto", vmin=0.0, vmax=1.0)
         ax.set_title(title, fontweight="bold")
         ax.set_xticks(range(mat.shape[1]))
         ax.set_xticklabels(mat.columns)
         ax.set_yticks(range(mat.shape[0]))
         ax.set_yticklabels(mat.index)
 
-        # anota valores
+
         for i in range(mat.shape[0]):
             for j in range(mat.shape[1]):
                 v = mat.values[i, j]
                 if np.isfinite(v):
                     ax.text(j, i, fmt.format(v), ha="center", va="center", fontsize=11)
 
-    # common colorbar on the right
+
     cbar = fig.colorbar(im, ax=axes, fraction=0.046, pad=0.02)
     cbar.set_label("share (mean across seeds)")
 
@@ -332,9 +322,9 @@ def plot_two_heatmaps_side_by_side(
 
     
 
-# ----------------------------
-# Main runner
-# ----------------------------
+
+
+
 
 def run_one(policy: str, seed: int, steps: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
     model = MarketModel(
@@ -383,9 +373,9 @@ def main():
     results_csv = os.path.join(out_dir, "kpi_results.csv")
     results_df.to_csv(results_csv, index=False)
 
-    # ----------------------------
-    # Heatmaps: Policy × AgentType
-    # ----------------------------
+
+
+
     mat_vol = make_policy_agent_matrix(results_df, prefix="volume_share_", policies_order=policies)
     mat_exp = make_policy_agent_matrix(results_df, prefix="abs_exposure_share_", policies_order=policies)
 
@@ -409,7 +399,7 @@ def main():
     
     print("\n=== Done ===")
     print(f"Saved: {results_csv}")
-    # print resumo por cenário
+
     print("\n=== KPI summary (mean ± std) ===")
     for policy in policies:
         sub = results_df[results_df["policy"] == policy]

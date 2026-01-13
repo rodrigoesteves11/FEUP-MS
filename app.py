@@ -1,13 +1,3 @@
-# app.py
-#
-# Two-page UI using Mesa SolaraViz:
-#   - Page 0: LIVE (mock-style layout: price gap + radar snapshot + mispricing + volume bars + drawdown + gini + info panel)
-#   - Page 1: AGGREGATE (mock-style layout: comparative radar + 4 boxplots + short interpretation text)
-#
-# Run:
-#   1) python run.py
-#   2) solara run app.py
-
 from __future__ import annotations
 
 import os
@@ -21,7 +11,7 @@ import solara
 from mesa.visualization import SolaraViz
 from mesa.visualization.utils import update_counter
 
-# Patch Mesa's default grid layout so a single component starts full width
+
 import mesa.visualization.solara_viz as _mesa_solara_viz
 
 _ORIG_MAKE_INITIAL_GRID_LAYOUT = _mesa_solara_viz.make_initial_grid_layout
@@ -37,26 +27,16 @@ _mesa_solara_viz.make_initial_grid_layout = _make_initial_grid_layout_full_width
 
 from model import MarketModel, POLICY_PRESETS
 
-
-# ----------------------------
-# Style (matches your mock)
-# ----------------------------
-
 plt.style.use("seaborn-v0_8-whitegrid")
 plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["axes.edgecolor"] = "#333333"
 plt.rcParams["axes.linewidth"] = 0.8
 
-# Policy colors (as in your mock)
 POLICY_COLORS = {"none": "#e74c3c", "moderate": "#f1c40f", "excessive": "#2ecc71"}
 
 RESULTS_DIR = "results_new_model"
 CSV_PATH = os.path.join(RESULTS_DIR, "kpi_results.csv")
 
-
-# ----------------------------
-# CONFIG (match run.py for comparability)
-# ----------------------------
 
 CONFIG = {
     "n_fundamentalists": 100,
@@ -82,10 +62,6 @@ CONFIG = {
     "tatonnement_eta": 0.2,
 }
 
-
-# ----------------------------
-# Helpers (radar + normalization)
-# ----------------------------
 
 def _safe_series(arr) -> np.ndarray:
     a = np.asarray(arr, dtype=float)
@@ -147,11 +123,6 @@ def _norm_with_bounds(x: float, lo: float, hi: float) -> float:
         return 0.0
     return float(np.clip((x - lo) / (hi - lo), 0.0, 1.0))
 
-
-# ----------------------------
-# Page 0: LIVE (mock-style + fixed radar scaling + right-side panel area)
-# ----------------------------
-
 def _make_live_dashboard_figure(model) -> plt.Figure:
     df = model.datacollector.get_model_vars_dataframe()
     if df is None or len(df) == 0:
@@ -175,7 +146,7 @@ def _make_live_dashboard_figure(model) -> plt.Figure:
 
     fig = plt.figure(figsize=(16, 10))
 
-    # Left grid for the 6 main plots (reserve the right margin for radar + info)
+
     gs = GridSpec(
         3,
         4,
@@ -195,7 +166,7 @@ def _make_live_dashboard_figure(model) -> plt.Figure:
         y=0.98,
     )
 
-    # A) Price vs Fundamental (top-left spans all columns)
+
     ax_price = fig.add_subplot(gs[0, :])
     ax_price.plot(t, price, color="black", lw=1.5, label="Market Price")
     ax_price.plot(t, fundamental, color="blue", ls="--", alpha=0.6, label="Fundamental")
@@ -215,7 +186,7 @@ def _make_live_dashboard_figure(model) -> plt.Figure:
     ax_price.legend(loc="upper left", fontsize=9)
     ax_price.grid(True, alpha=0.2)
 
-    # C) Mispricing (row 2, left half)
+
     ax_misp = fig.add_subplot(gs[1, :2])
     ax_misp.plot(t, mispricing, color="#c0392b", lw=1.5)
     ax_misp.axhline(0, color="black", lw=1)
@@ -223,13 +194,13 @@ def _make_live_dashboard_figure(model) -> plt.Figure:
     ax_misp.set_title("3. Mispricing (Deviation from Fair Value)", fontweight="bold", size=10)
     ax_misp.grid(True, alpha=0.2)
 
-    # D) Volume bars (row 2, right half)
+
     ax_vol = fig.add_subplot(gs[1, 2:])
     ax_vol.bar(t, volume, color="#8e44ad", alpha=0.60, width=1.0)
     ax_vol.set_title("4. Liquidity (Trading Volume)", fontweight="bold", size=10)
     ax_vol.grid(True, axis="y", alpha=0.2)
 
-    # E) Underwater plot (row 3, left half)
+
     ax_dd = fig.add_subplot(gs[2, :2])
     ax_dd.plot(t, drawdown, color="#d35400", lw=1.5)
     ax_dd.fill_between(t, drawdown, 0, color="#d35400", alpha=0.20)
@@ -238,43 +209,43 @@ def _make_live_dashboard_figure(model) -> plt.Figure:
     ax_dd.set_ylabel("Drawdown")
     ax_dd.grid(True, alpha=0.2)
 
-    # F) Gini (row 3, right half)
+
     ax_gini = fig.add_subplot(gs[2, 2:])
     ax_gini.plot(t, gini, color="#27ae60", lw=1.5)
     ax_gini.set_title("6. Inequality (Gini)", fontweight="bold", size=10)
     ax_gini.set_ylabel("Gini")
     ax_gini.grid(True, alpha=0.2)
 
-    # Right-side area: radar on top, info panel below
-    # Radar axis - compact version (4 variables)
+
+
     ax_radar = fig.add_axes([0.74, 0.72, 0.16, 0.16], projection="polar")
 
     theta, draw_poly = radar_factory(4)
     radar_labels = ["Vol", "Crash", "Illiq", "Gini"]
 
-    # --- Fixed/robust scaling for LIVE radar ---
-    # Volatility proxy: rolling std of log returns; normalize by 0.10
+
+
     vol_series = _rolling_volatility_from_price(price, window=20)
     volat_now = float(vol_series[-1]) if vol_series.size else 0.0
     vol_score = _clip01(volat_now / 0.10)
 
-    # Crash risk: use worst drawdown so far; normalize by 25% threshold
-    worst_dd = float(np.nanmin(drawdown))  # negative
+
+    worst_dd = float(np.nanmin(drawdown))
     crash_score = _clip01((-worst_dd) / 0.25)
 
-    # Illiquidity: scale volume by Q (lower volume => higher illiquidity)
+
     Q = float(getattr(model, "Q", 300.0))
     vol_now = float(last["Volume"])
     liquidity_score = _clip01(vol_now / (0.50 * Q))
     illiq_score = 1.0 - liquidity_score
 
-    # Gini: use a reasonable fixed band
+
     gini_now = float(last["GiniWealthDisc"])
     gini_score = _clip01((gini_now - 0.0) / (0.50 - 0.0))
 
     radar_vals = [vol_score, crash_score, illiq_score, gini_score]
 
-    # Draw with improved colors
+
     vals = np.asarray(radar_vals, dtype=float)
     vals = np.clip(vals, 0.0, 1.0)
     v = np.concatenate((vals, [vals[0]]))
@@ -289,7 +260,7 @@ def _make_live_dashboard_figure(model) -> plt.Figure:
     ax_radar.grid(True, alpha=0.4, color="#bdc3c7")
     ax_radar.set_title("Risk", fontweight="bold", size=9, y=1.02, color="#2c3e50")
 
-    # Info panel axis
+
     ax_info = fig.add_axes([0.76, 0.07, 0.24, 0.56])
     ax_info.axis("off")
 
@@ -358,9 +329,6 @@ def LiveDashboard(model):
         solara.FigureMatplotlib(fig, format="png")
 
 
-# ----------------------------
-# Page 1: AGGREGATE (mock-style + robust scaling)
-# ----------------------------
 
 def _load_kpis(csv_path: str) -> pd.DataFrame | None:
     if not os.path.exists(csv_path):
@@ -379,7 +347,7 @@ def _make_aggregate_figure(results_df: pd.DataFrame) -> plt.Figure:
 
     fig = plt.figure(figsize=(16, 10))
 
-    # Explicit margins to avoid polar/title collisions
+
     gs = GridSpec(
         2,
         4,
@@ -400,24 +368,24 @@ def _make_aggregate_figure(results_df: pd.DataFrame) -> plt.Figure:
         y=0.97,
     )
 
-    # Radar (top center)
+
     ax_radar = fig.add_subplot(gs[0, 1:3], projection="polar")
     theta, draw_poly = radar_factory(4)
     radar_labels = ["Volatility", "Crash risk", "Illiquidity", "Gini"]
 
-    # Robust scaling using ALL runs (quantiles across policies+seeds)
+
     vol_lo, vol_hi = _robust_bounds(df["vol_mean"], 0.10, 0.90)
-    crash_mag = -pd.to_numeric(df["max_drawdown"], errors="coerce")  # positive magnitude
+    crash_mag = -pd.to_numeric(df["max_drawdown"], errors="coerce")
     crash_lo, crash_hi = _robust_bounds(crash_mag, 0.10, 0.90)
     volm_lo, volm_hi = _robust_bounds(df["volume_mean"], 0.10, 0.90)
     g_lo, g_hi = _robust_bounds(df["gini_final"], 0.10, 0.90)
 
-    # Policy means (what you want to summarize)
+
     means = df.groupby("policy")[["vol_mean", "max_drawdown", "volume_mean", "gini_final"]].mean()
 
     for pol in policies:
         mean_vol = float(means.loc[pol, "vol_mean"])
-        mean_crash = float(-means.loc[pol, "max_drawdown"])  # magnitude
+        mean_crash = float(-means.loc[pol, "max_drawdown"])
         mean_liq = float(means.loc[pol, "volume_mean"])
         mean_g = float(means.loc[pol, "gini_final"])
 
@@ -438,10 +406,10 @@ def _make_aggregate_figure(results_df: pd.DataFrame) -> plt.Figure:
     ax_radar.set_yticks([])
     ax_radar.grid(True, alpha=0.2)
 
-    # IMPORTANT: no separate polar title here (it was colliding with the suptitle)
+
     ax_radar.legend(loc="upper right", bbox_to_anchor=(1.30, 1.15), fontsize=9, frameon=True)
 
-    # Helper for styled boxplots
+
     def _styled_box(ax, series_list, title, ylabel=None):
         bp = ax.boxplot(series_list, patch_artist=True, labels=["None", "Mod", "Exc"], showfliers=False)
         for patch, color in zip(
@@ -455,7 +423,7 @@ def _make_aggregate_figure(results_df: pd.DataFrame) -> plt.Figure:
             ax.set_ylabel(ylabel)
         ax.grid(alpha=0.2)
 
-    # Bottom row boxplots
+
     ax_box1 = fig.add_subplot(gs[1, 0])
     _styled_box(
         ax_box1,
@@ -485,7 +453,7 @@ def _make_aggregate_figure(results_df: pd.DataFrame) -> plt.Figure:
         "Final inequality (Gini)",
     )
 
-    # Short interpretation text
+
     fig.text(
         0.02,
         0.56,
@@ -528,10 +496,6 @@ def AggregatePage(model):
             solara.Button("📥 Export as PDF", on_click=_export_aggregate_pdf, small=True)
         solara.FigureMatplotlib(fig, format="png")
 
-
-# ----------------------------
-# SolaraViz wiring
-# ----------------------------
 
 model_params = {
     "policy_name": {

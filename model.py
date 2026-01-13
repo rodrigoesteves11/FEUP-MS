@@ -26,10 +26,6 @@ from mesa.datacollection import DataCollector
 from agents import FundamentalistAgent, ChartistAgent, NoiseAgent
 
 
-# ----------------------------
-# Utilitários
-# ----------------------------
-
 def compute_gini_nonnegative(values: List[float]) -> float:
     """
     Gini standard requer valores não-negativos.
@@ -54,18 +50,13 @@ def compute_gini_nonnegative(values: List[float]) -> float:
 def clip(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
 
-
-# ----------------------------
-# Políticas
-# ----------------------------
-
 @dataclass(frozen=True)
 class PolicyParams:
-    tau: float              # taxa transação (proporcional)
-    L_max: float            # limite de alavancagem (exposição <= L_max * W_base)
-    short_ban: bool         # se True, impõe q >= 0
-    q_max: float            # limite superior de posição (shares); use math.inf para "sem"
-    C_min: float            # cash mínimo permitido; use -math.inf para "sem"
+    tau: float
+    L_max: float
+    short_ban: bool
+    q_max: float
+    C_min: float
 
 
 POLICY_PRESETS: Dict[str, PolicyParams] = {
@@ -77,18 +68,18 @@ POLICY_PRESETS: Dict[str, PolicyParams] = {
         C_min=-math.inf,
     ),
     "moderate": PolicyParams(
-        tau=0.003,      # 0.3% transaction tax
-        L_max=1.3,      # 1.3x leverage limit
+        tau=0.003,
+        L_max=1.3,
         short_ban=False,
         q_max=math.inf,
         C_min=-math.inf,
     ),
     "excessive": PolicyParams(
-        tau=0.01,       # 1% transaction tax
-        L_max=1.3,      # 1.3x leverage limit
-        short_ban=True, # Proíbe short selling
-        q_max=20.0,     # máximo 20 shares
-        C_min=-200.0,   # margem limitada
+        tau=0.01,
+        L_max=1.3,
+        short_ban=True,
+        q_max=20.0,
+        C_min=-200.0,
     ),
 }
 
@@ -103,43 +94,43 @@ class MarketModel(mesa.Model):
 
     def __init__(
         self,
-        # Agentes
+
         n_fundamentalists: int = 100,
         n_chartists: int = 100,
         n_noise: int = 100,
 
-        # Mercado
+
         initial_price: float = 20.0,
         initial_dividend: float = 1.0,
         Q: float = 300.0,
         r: float = 0.05,
 
-        # Dividendo
+
         d_bar: float = 1.0,
         rho: float = 0.95,
         sigma_d: float = 0.15,
 
-        # Inicialização de riqueza/posições
-        initial_wealth: float = 1000.0,  # riqueza total inicial por agente (aprox.)
-        # preferências e risco heterogéneos (intervalos)
+
+        initial_wealth: float = 1000.0,
+
         gamma_range: Tuple[float, float] = (0.5, 1.5),
         sigma2_range: Tuple[float, float] = (1.0, 6.0),
 
-        # Parâmetros comportamentais (intervalos)
-        kappa_f_range: Tuple[float, float] = (0.05, 0.20),   # fundamentalistas
-        kappa_c_range: Tuple[float, float] = (0.5, 2.0),     # chartistas
-        chartist_L_choices: Tuple[int, ...] = (5, 20, 60),   # chartistas
-        sigma_n_range: Tuple[float, float] = (0.01, 0.05),   # noise (em log)
 
-        # Trading rule
+        kappa_f_range: Tuple[float, float] = (0.05, 0.20),
+        kappa_c_range: Tuple[float, float] = (0.5, 2.0),
+        chartist_L_choices: Tuple[int, ...] = (5, 20, 60),
+        sigma_n_range: Tuple[float, float] = (0.01, 0.05),
+
+
         beta: float = 1.0,
         phi: float = 0.2,
 
-        # Tâtonnement
+
         tatonnement_K: int = 20,
         tatonnement_eta: float = 0.05,
 
-        # Política
+
         policy_name: str = "none",
 
         seed: Optional[int] = None,
@@ -148,7 +139,7 @@ class MarketModel(mesa.Model):
     ):
         super().__init__(seed=seed)
 
-        # ----- Guardrails básicos -----
+
         if initial_price <= 0:
             raise ValueError("initial_price must be > 0")
         if initial_dividend < 0:
@@ -179,7 +170,7 @@ class MarketModel(mesa.Model):
         self.policy_name = policy_name
         self.policy = POLICY_PRESETS[policy_name]
 
-        # ----- Parâmetros do mercado -----
+
         self.Q = float(Q)
         self.r = float(r)
         self.d_bar = float(d_bar)
@@ -192,32 +183,32 @@ class MarketModel(mesa.Model):
         self.tatonnement_K = int(tatonnement_K)
         self.tatonnement_eta = float(tatonnement_eta)
 
-        # ----- Estado do mercado -----
-        self.price = float(initial_price)        # P_t
-        self.prev_price = float(initial_price)   # P_{t-1}
-        self.dividend = float(initial_dividend)  # D_t (dividendo "corrente", pago no início do step)
+
+        self.price = float(initial_price)
+        self.prev_price = float(initial_price)
+        self.dividend = float(initial_dividend)
         self.step_count = 0
 
-        # Histórico para momentum
+
         self.max_L = max(chartist_L_choices) if chartist_L_choices else 1
         self.price_history: List[float] = [self.price] * (self.max_L + 1)
 
-        # Specialist inventory (para conservar total de shares)
+
         self.specialist_inventory = 0.0
 
-        # Métricas intra-step
+
         self.volume = 0.0
         self.peak_price = self.price
 
-        # ----- Criar agentes e distribuir shares iniciais -----
+
         N = int(n_fundamentalists + n_chartists + n_noise)
         if N <= 0:
             raise ValueError("Total number of agents must be > 0")
 
-        # Distribuição inicial de shares: soma(q_i) = Q e specialist começa com 0
+
         q0 = self.Q / N
-        # Cash inicial para que wealth ~ initial_wealth:
-        # C0 = W0 - q0 * P0
+
+
         C0 = float(initial_wealth) - q0 * self.price
         if C0 < 0:
             raise ValueError(
@@ -225,14 +216,14 @@ class MarketModel(mesa.Model):
                 "Increase initial_wealth or reduce Q or initial_price."
             )
 
-        # Funções de amostragem heterogénea
+
         def sample_uniform(lo_hi: Tuple[float, float]) -> float:
             lo, hi = lo_hi
             if lo <= 0 or hi <= 0 or hi < lo:
                 raise ValueError(f"Invalid range {lo_hi}")
             return self.random.uniform(lo, hi)
 
-        # Criar fundamentalistas
+
         for _ in range(int(n_fundamentalists)):
             gamma_i = sample_uniform(gamma_range)
             sigma2_i = sample_uniform(sigma2_range)
@@ -246,7 +237,7 @@ class MarketModel(mesa.Model):
                 kappa_f=kappa_f,
             )
 
-        # Criar chartistas
+
         for _ in range(int(n_chartists)):
             gamma_i = sample_uniform(gamma_range)
             sigma2_i = sample_uniform(sigma2_range)
@@ -262,7 +253,7 @@ class MarketModel(mesa.Model):
                 kappa_c=kappa_c,
             )
 
-        # Criar noise traders
+
         for _ in range(int(n_noise)):
             gamma_i = sample_uniform(gamma_range)
             sigma2_i = sample_uniform(sigma2_range)
@@ -276,7 +267,7 @@ class MarketModel(mesa.Model):
                 sigma_n=sigma_n,
             )
 
-        # ----- DataCollector -----
+
         self.datacollector = DataCollector(
             model_reporters={
                 "Step": lambda m: m.step_count,
@@ -308,12 +299,12 @@ class MarketModel(mesa.Model):
             }
         )
 
-        # Coletar estado inicial (Step=0)
+
         self.datacollector.collect(self)
 
-    # ----------------------------
-    # Fundamental e dividendo
-    # ----------------------------
+
+
+
 
     def fundamental_price(self, D_t: float) -> float:
         """
@@ -332,9 +323,9 @@ class MarketModel(mesa.Model):
         D_next = self.d_bar + self.rho * (self.dividend - self.d_bar) + self.sigma_d * eps
         return max(0.0, D_next)
 
-    # ----------------------------
-    # Liquidação e ordens
-    # ----------------------------
+
+
+
 
     def _settle_cash_and_dividends(self):
         """
@@ -346,7 +337,7 @@ class MarketModel(mesa.Model):
             a.cash *= (1.0 + self.r)
             a.cash += a.shares * self.dividend
 
-        # wealth_base fixado com P_t (preço antes do clearing)
+
         for a in self.agents:
             a.wealth_base = a.cash + a.shares * self.price
 
@@ -364,7 +355,7 @@ class MarketModel(mesa.Model):
         W = a.wealth_base
         q = a.shares
 
-        # se W <= 0: tenta reduzir risco -> alvo 0
+
         if W <= 0:
             q_star = 0.0
             return self.phi * (q_star - q)
@@ -375,8 +366,8 @@ class MarketModel(mesa.Model):
             return 0.0
 
         signal = self.beta * (delta_mu / denom)
-        x_star = W * math.tanh(signal)           # exposição alvo em euros
-        q_star = x_star / P_candidate           # ações alvo
+        x_star = W * math.tanh(signal)
+        q_star = x_star / P_candidate
 
         return self.phi * (q_star - q)
 
@@ -405,29 +396,29 @@ class MarketModel(mesa.Model):
         C = a.cash
         W = a.wealth_base
 
-        # ---- Regra 1: short ban ----
+
         q_prime = q + delta_q
         if short_ban:
             if q_prime < 0:
                 q_prime = 0.0
                 delta_q = q_prime - q
 
-        # ---- Regra 2: q_max ----
+
         if q_max != math.inf:
             if short_ban:
-                # long-only
+
                 q_prime = clip(q_prime, 0.0, q_max)
             else:
-                # cap simétrico (permite short, mas limitado)
+
                 q_prime = clip(q_prime, -q_max, q_max)
 
             delta_q = q_prime - q
 
-        # ---- Regra 3: margem/leverage ----
+
         if L_max != math.inf:
-            # |q'| <= (L_max * W) / P
+
             if W <= 0:
-                # se wealth_base <= 0, força a reduzir exposição
+
                 q_bound = 0.0
             else:
                 q_bound = (L_max * W) / P_candidate
@@ -435,10 +426,10 @@ class MarketModel(mesa.Model):
             q_prime = clip(q_prime, -q_bound, q_bound)
             delta_q = q_prime - q
 
-        # ---- Regra 4: cash floor ----
+
         if C_min != -math.inf:
-            # C' = C - delta_q*P - tau*|delta_q|*P >= C_min
-            # Para buys (delta_q>0) pode restringir. Para sells, geralmente não.
+
+
             if delta_q > 0:
                 max_buy = (C - C_min) / (P_candidate * (1.0 + tau)) if (P_candidate > 0) else 0.0
                 if max_buy < 0:
@@ -453,10 +444,6 @@ class MarketModel(mesa.Model):
         """
         dq = self._desired_delta_q(a, P_candidate)
         return self._apply_policy(a, P_candidate, dq)
-
-    # ----------------------------
-    # Tâtonnement e execução
-    # ----------------------------
 
     def _tatonnement_price(self) -> float:
         """
@@ -475,13 +462,13 @@ class MarketModel(mesa.Model):
             for a in self.agents:
                 Z += self._effective_delta_q(a, P)
 
-            # passo limitado em log-preço
+
             delta_logP = self.tatonnement_eta * math.tanh(Z / Q)
 
             P = P * math.exp(delta_logP)
 
             if not math.isfinite(P) or P <= 0:
-                return self.price  # fallback conservador
+                return self.price
 
         return P
 
@@ -496,28 +483,28 @@ class MarketModel(mesa.Model):
         total_delta = 0.0
         volume = 0.0
 
-        # calcular e executar para cada agente
+
         for a in self.agents:
             dq_eff = self._effective_delta_q(a, P_new)
 
             fee = tau * abs(dq_eff) * P_new
-            # atualizar posição
+
             a.shares += dq_eff
-            # atualizar cash
+
             a.cash -= dq_eff * P_new + fee
 
             total_delta += dq_eff
             volume += abs(dq_eff)
 
-        # Specialist absorve o desequilíbrio líquido
-        # Se total_delta > 0, agentes compraram líquido -> specialist vendeu -> inventory diminui
+
+
         self.specialist_inventory -= total_delta
 
         self.volume = volume
 
-    # ----------------------------
-    # Step principal
-    # ----------------------------
+
+
+
 
     def step(self):
         """
@@ -530,35 +517,35 @@ class MarketModel(mesa.Model):
         E) Atualiza dividendos: gera D_{t+1}
         F) Atualiza métricas e recolhe dados
         """
-        # guardar preço anterior para log return
+
         self.prev_price = self.price
 
-        # A) liquidação
+
         self._settle_cash_and_dividends()
 
-        # B) expectativas
+
         self.agents.shuffle_do("step")
 
-        # C) descobre preço
+
         P_new = self._tatonnement_price()
 
-        # D) executa trades
+
         self._execute_trades(P_new)
 
-        # atualiza preço e histórico
+
         self.price = P_new
         self.price_history.append(self.price)
         if len(self.price_history) > (self.max_L + 1):
             self.price_history = self.price_history[-(self.max_L + 1):]
 
-        # peak/drawdown
+
         if self.price > self.peak_price:
             self.peak_price = self.price
 
-        # E) novo dividendo para o próximo período
+
         self.dividend = self.next_dividend()
 
-        # step count e recolha
+
         self.step_count += 1
         self.datacollector.collect(self)
 

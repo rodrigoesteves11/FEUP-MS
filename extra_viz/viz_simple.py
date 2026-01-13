@@ -18,7 +18,7 @@ class LiveMarketViz:
         self.total_steps = steps
         self.seed = seed
         
-        # Criar o modelo
+
         self.model = MarketModel(
             n_fundamentalists=100,
             n_chartists=100,
@@ -45,7 +45,7 @@ class LiveMarketViz:
             seed=seed,
         )
         
-        # Histórico
+
         self.history = {
             'step': [],
             'price': [],
@@ -57,7 +57,7 @@ class LiveMarketViz:
             'log_return': [],
         }
         
-        # Setup da figura
+
         self.fig = plt.figure(figsize=(16, 10))
         seed_text = f" | Seed: {seed}" if seed is not None else ""
         self.fig.suptitle(f'Market ABM - Policy: {policy.upper()}{seed_text}', fontsize=16, fontweight='bold')
@@ -73,7 +73,7 @@ class LiveMarketViz:
         self.ax_info = self.fig.add_subplot(gs[2, 1:])
         self.ax_info.axis('off')
         
-        # Configurar eixos
+
         self.ax_price.set_title('Price vs Fundamental')
         self.ax_price.set_xlabel('Step')
         self.ax_price.set_ylabel('Price')
@@ -110,17 +110,16 @@ class LiveMarketViz:
         self.ax_returns.grid(alpha=0.3)
         
     def update(self, frame):
-        # Run one step
+
         self.model.step()
         
-        # Atualizar display
+
         self.update_display()
         
         return []
     
     def update_display(self):
         """Atualiza os gráficos com o estado atual do modelo"""
-        # Coletar dados
         df = self.model.datacollector.get_model_vars_dataframe()
         last = df.iloc[-1]
         
@@ -133,10 +132,8 @@ class LiveMarketViz:
         self.history['gini'].append(last['GiniWealthDisc'])
         self.history['log_return'].append(last['LogReturn'])
         
-        # Atualizar gráficos
         steps = self.history['step']
         
-        # Price
         self.ax_price.clear()
         self.ax_price.plot(steps, self.history['price'], label='Price', color='#0066cc', linewidth=2)
         self.ax_price.plot(steps, self.history['fundamental'], label='Fundamental', 
@@ -147,7 +144,6 @@ class LiveMarketViz:
         self.ax_price.legend()
         self.ax_price.grid(alpha=0.3)
         
-        # Bubble ratio
         self.ax_bubble.clear()
         self.ax_bubble.plot(steps, self.history['bubble_ratio'], color='#ff6600', linewidth=2)
         self.ax_bubble.axhline(1.0, color='black', linestyle='--', alpha=0.5)
@@ -158,7 +154,6 @@ class LiveMarketViz:
         self.ax_bubble.legend(fontsize=8)
         self.ax_bubble.grid(alpha=0.3)
         
-        # Mispricing
         self.ax_mispricing.clear()
         self.ax_mispricing.plot(steps, self.history['mispricing'], color='#cc0000', linewidth=1.5)
         self.ax_mispricing.axhline(0, color='black', linestyle='-', alpha=0.5)
@@ -167,7 +162,6 @@ class LiveMarketViz:
         self.ax_mispricing.set_ylabel('P - P*')
         self.ax_mispricing.grid(alpha=0.3)
         
-        # Volume
         self.ax_volume.clear()
         self.ax_volume.plot(steps, self.history['volume'], color='#9900cc', linewidth=1.5)
         self.ax_volume.set_title('Trading Volume')
@@ -175,7 +169,6 @@ class LiveMarketViz:
         self.ax_volume.set_ylabel('Volume')
         self.ax_volume.grid(alpha=0.3)
         
-        # Gini
         self.ax_gini.clear()
         self.ax_gini.plot(steps, self.history['gini'], color='#cc6600', linewidth=1.5)
         self.ax_gini.set_title('Gini (Wealth Inequality)')
@@ -183,7 +176,6 @@ class LiveMarketViz:
         self.ax_gini.set_ylabel('Gini')
         self.ax_gini.grid(alpha=0.3)
         
-        # Log Returns
         self.ax_returns.clear()
         self.ax_returns.plot(steps, self.history['log_return'], color='#00cc66', linewidth=1.0, alpha=0.7)
         self.ax_returns.axhline(0, color='black', linestyle='-', alpha=0.5)
@@ -192,7 +184,6 @@ class LiveMarketViz:
         self.ax_returns.set_ylabel('Log Return')
         self.ax_returns.grid(alpha=0.3)
         
-        # Info panel
         self.ax_info.clear()
         self.ax_info.axis('off')
         
@@ -217,10 +208,8 @@ class LiveMarketViz:
         print("Close the window to stop")
         print()
         
-        # Capturar estado inicial (step 0) antes de começar animação
         self.update_display()
         
-        # Ajustar frames para parar exatamente no step desejado
         anim = FuncAnimation(self.fig, self.update, frames=self.total_steps - 4, 
                            interval=100, repeat=False, blit=True)
         plt.show()
@@ -229,7 +218,6 @@ class LiveMarketViz:
 if __name__ == "__main__":
     import sys
     
-    # Argumentos obrigatórios: policy, steps (opcional), seed (opcional)
     if len(sys.argv) < 2:
         print("ERROR: Policy argument is required!")
         print(f"\nUsage: python3 viz_simple.py <policy> [steps] [seed]")
