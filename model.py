@@ -77,18 +77,18 @@ POLICY_PRESETS: Dict[str, PolicyParams] = {
         C_min=-math.inf,
     ),
     "moderate": PolicyParams(
-        tau=0.003,      # 0.3%
-        L_max=1.3,
+        tau=0.003,      # 0.3% transaction tax
+        L_max=1.3,      # 1.3x leverage limit
         short_ban=False,
         q_max=math.inf,
         C_min=-math.inf,
     ),
     "excessive": PolicyParams(
-        tau=0.01,       # 1%
-        L_max=1.0,
-        short_ban=True,
-        q_max=2.0,  # podes pôr um valor finito se quiseres endurecer mais
-        C_min=0.0,
+        tau=0.01,       # 1% transaction tax
+        L_max=1.3,      # 1.3x leverage limit
+        short_ban=True, # Proíbe short selling
+        q_max=20.0,     # máximo 20 shares
+        C_min=-200.0,   # margem limitada
     ),
 }
 

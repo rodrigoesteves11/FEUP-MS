@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -331,7 +332,29 @@ def _make_live_dashboard_figure(model) -> plt.Figure:
 def LiveDashboard(model):
     update_counter.get()
     fig = _make_live_dashboard_figure(model)
+    
+    def _export_live_png():
+        os.makedirs("screenshots", exist_ok=True)
+        seed = getattr(model, "seed", "unknown")
+        policy = getattr(model, "policy_name", "unknown")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join("screenshots", f"live_dashboard_{policy}_seed{seed}_{timestamp}.png")
+        fig.savefig(path, dpi=300, bbox_inches='tight')
+        print(f"✅ Saved PNG: {path}")
+    
+    def _export_live_pdf():
+        os.makedirs("screenshots", exist_ok=True)
+        seed = getattr(model, "seed", "unknown")
+        policy = getattr(model, "policy_name", "unknown")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join("screenshots", f"live_dashboard_{policy}_seed{seed}_{timestamp}.pdf")
+        fig.savefig(path, dpi=300, bbox_inches='tight')
+        print(f"✅ Saved PDF: {path}")
+    
     with solara.Column(style={"width": "100%"}):
+        with solara.Row():
+            solara.Button("📥 Export as PNG", on_click=_export_live_png, small=True)
+            solara.Button("📥 Export as PDF", on_click=_export_live_pdf, small=True)
         solara.FigureMatplotlib(fig, format="png")
 
 
@@ -485,6 +508,24 @@ def AggregatePage(model):
             solara.Warning("CSV not found. Run `python run.py` first to generate results.", dense=True)
             return
         fig = solara.use_memo(lambda: _make_aggregate_figure(df), dependencies=[len(df)])
+        
+        def _export_aggregate_png():
+            os.makedirs("screenshots", exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = os.path.join("screenshots", f"aggregate_results_{timestamp}.png")
+            fig.savefig(path, dpi=300, bbox_inches='tight')
+            print(f"✅ Saved PNG: {path}")
+        
+        def _export_aggregate_pdf():
+            os.makedirs("screenshots", exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = os.path.join("screenshots", f"aggregate_results_{timestamp}.pdf")
+            fig.savefig(path, dpi=300, bbox_inches='tight')
+            print(f"✅ Saved PDF: {path}")
+        
+        with solara.Row():
+            solara.Button("📥 Export as PNG", on_click=_export_aggregate_png, small=True)
+            solara.Button("📥 Export as PDF", on_click=_export_aggregate_pdf, small=True)
         solara.FigureMatplotlib(fig, format="png")
 
 
