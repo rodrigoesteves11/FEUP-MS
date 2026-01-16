@@ -226,9 +226,9 @@ if __name__ == "__main__":
         print(f"  steps: integer (optional, default=50)")
         print(f"  seed: integer (optional, uses random if omitted)")
         print(f"\nExamples:")
-        print(f"  python3 viz_simple.py none              # policy=none, 50 steps, random seed")
-        print(f"  python3 viz_simple.py moderate 100      # policy=moderate, 100 steps, random seed")
-        print(f"  python3 viz_simple.py excessive 75 42   # policy=excessive, 75 steps, seed 42")
+        print(f"  python3 viz_simple.py none              (policy=none, 50 steps, random seed)")
+        print(f"  python3 viz_simple.py moderate 100      (policy=moderate, 100 steps, random seed)")
+        print(f"  python3 viz_simple.py excessive 75 42   (policy=excessive, 75 steps, seed 42)")
         sys.exit(1)
     
     policy = sys.argv[1]

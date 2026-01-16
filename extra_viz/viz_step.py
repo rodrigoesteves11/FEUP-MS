@@ -94,7 +94,6 @@ def save_visualization(model, out_dir, step):
     
     gs = GridSpec(3, 3, figure=fig, hspace=0.3, wspace=0.3)
     
-    # 1. Price vs Fundamental
     ax = fig.add_subplot(gs[0, :2])
     ax.plot(df['Step'], df['Price'], label='Price', color='#0066cc', linewidth=2)
     ax.plot(df['Step'], df['FundamentalPrice'], label='Fundamental', 
@@ -105,7 +104,6 @@ def save_visualization(model, out_dir, step):
     ax.legend()
     ax.grid(alpha=0.3)
     
-    # 2. Bubble Ratio
     ax = fig.add_subplot(gs[0, 2])
     ax.plot(df['Step'], df['BubbleRatio'], color='#ff6600', linewidth=2)
     ax.axhline(1.0, color='black', linestyle='--', alpha=0.5)
@@ -116,7 +114,6 @@ def save_visualization(model, out_dir, step):
     ax.legend(fontsize=8)
     ax.grid(alpha=0.3)
     
-    # 3. Mispricing
     ax = fig.add_subplot(gs[1, 0])
     ax.plot(df['Step'], df['Mispricing'], color='#cc0000', linewidth=1.5)
     ax.axhline(0, color='black', linestyle='-', alpha=0.5)
@@ -125,7 +122,6 @@ def save_visualization(model, out_dir, step):
     ax.set_ylabel('P - P*')
     ax.grid(alpha=0.3)
     
-    # 4. Volume
     ax = fig.add_subplot(gs[1, 1])
     ax.plot(df['Step'], df['Volume'], color='#9900cc', linewidth=1.5)
     ax.set_title('Trading Volume', fontsize=12, fontweight='bold')
@@ -133,7 +129,6 @@ def save_visualization(model, out_dir, step):
     ax.set_ylabel('Volume')
     ax.grid(alpha=0.3)
     
-    # 5. Gini
     ax = fig.add_subplot(gs[1, 2])
     ax.plot(df['Step'], df['GiniWealthDisc'], color='#cc6600', linewidth=1.5)
     ax.set_title('Gini (Wealth Inequality)', fontsize=12, fontweight='bold')
@@ -141,7 +136,6 @@ def save_visualization(model, out_dir, step):
     ax.set_ylabel('Gini')
     ax.grid(alpha=0.3)
     
-    # 6. Log Returns
     ax = fig.add_subplot(gs[2, 0])
     ax.plot(df['Step'], df['LogReturn'], color='#00cc66', linewidth=1.0, alpha=0.7)
     ax.axhline(0, color='black', linestyle='-', alpha=0.5)
@@ -150,7 +144,6 @@ def save_visualization(model, out_dir, step):
     ax.set_ylabel('Log Return')
     ax.grid(alpha=0.3)
     
-    # 7. Info Panel
     ax = fig.add_subplot(gs[2, 1:])
     ax.axis('off')
     
@@ -257,10 +250,10 @@ if __name__ == "__main__":
         print(f"  save_every: integer (optional, default=10)")
         print(f"  seed: integer (optional, uses random if omitted)")
         print(f"\nExamples:")
-        print(f"  python3 viz_step.py none                # policy=none, 50 steps, save every 10, random seed")
-        print(f"  python3 viz_step.py moderate 100        # policy=moderate, 100 steps, save every 10, random seed")
-        print(f"  python3 viz_step.py excessive 75 5      # policy=excessive, 75 steps, save every 5, random seed")
-        print(f"  python3 viz_step.py none 50 10 42       # policy=none, 50 steps, save every 10, seed 42")
+        print(f"  python3 viz_step.py none                (policy=none, 50 steps, save every 10, random seed)")
+        print(f"  python3 viz_step.py moderate 100        (policy=moderate, 100 steps, save every 10, random seed)")
+        print(f"  python3 viz_step.py excessive 75 5      (policy=excessive, 75 steps, save every 5, random seed)")
+        print(f"  python3 viz_step.py none 50 10 42       (policy=none, 50 steps, save every 10, seed 42)")
         sys.exit(1)
     
     policy = sys.argv[1]
