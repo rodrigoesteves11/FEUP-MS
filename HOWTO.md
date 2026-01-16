@@ -9,9 +9,7 @@ A short guide to install, run, and visualize.
 (Python 3.13 preferably)
 
 ```bash
-python -m pip install --upgrade pip
 pip install -r requirements.txt
-pip install pandas numpy matplotlib plotly scipy
 python run.py
 solara run app.py
 ```

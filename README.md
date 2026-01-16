@@ -6,15 +6,6 @@ Este projeto implementa um **modelo de simulação de mercado de ações baseado
 
 ---
 
-## 📋 TODO List
-
-### Implementação Core
-- [x] verificar logica
-- [x] corrigir visualização
-- [x] testar sistema a mais de 50 steps 5 burn in (burn-in 10% dos steps)
-- [x] verificar redundancias e algumas falhas.
-- Nota: sistema atual a 50 steps "tem logica" mas os resultados ainda sao dubios:
-
 **none (sem regulação)**
 ```
 Volume alto, volatilidade “normal”, mispricing moderado; crashes e bolhas aparecem ocasionalmente.
@@ -192,7 +183,7 @@ O modelo usa um mecanismo de **tâtonnement Walrasiano** para descoberta de pre�
 O specialist ajusta o preço iterativamente até encontrar um preço de equilíbrio:
 
 ```python
-for k in range(K):  # K iterações (default: 50)
+for k in range(K):
     Z = sum(delta_q_effective(agent, P) for agent in agents)
     delta_logP = eta * tanh(Z / Q)
     P = P * exp(delta_logP)
@@ -439,16 +430,12 @@ Contam-se episódios consecutivos de pelo menos 10 períodos.
 ### Instalação
 
 ```bash
-# Criar ambiente virtual
 python -m venv .venv
 
-# Ativar (Windows)
 source .venv/Scripts/activate
 
-# Ativar (Linux/Mac)
 source .venv/bin/activate
 
-# Instalar dependências
 pip install -r requirements.txt
 ```
 
@@ -466,47 +453,39 @@ pandas>=1.3.0
 
 ```python
 CONFIG = {
-    # Agentes
     "n_fundamentalists": 100,
     "n_chartists": 100,
     "n_noise": 100,
 
-    # Mercado
     "initial_price": 20.0,
     "initial_dividend": 1.0,
-    "Q": 300.0,           # Ações em circulação
-    "r": 0.05,            # Taxa de juro
+    "Q": 300.0,
+    "r": 0.05,
 
-    # Dividendos AR(1)
     "d_bar": 1.0,
     "rho": 0.95,
     "sigma_d": 0.15,
 
-    # Riqueza inicial
     "initial_wealth": 1000.0,
-    "gamma_range": (0.5, 1.5),    # Aversão ao risco
-    "sigma2_range": (1.0, 6.0),   # Variância percebida
+    "gamma_range": (0.5, 1.5),
+    "sigma2_range": (1.0, 6.0),
 
-    # Comportamentos
-    "kappa_f_range": (0.05, 0.20),  # Fundamentalistas
-    "kappa_c_range": (0.5, 2.0),    # Chartistas
+    "kappa_f_range": (0.05, 0.20),
+    "kappa_c_range": (0.5, 2.0),
     "chartist_L_choices": (5, 20, 60),
-    "sigma_n_range": (0.01, 0.05), # Noise
+    "sigma_n_range": (0.01, 0.05),
 
-    # Trading
-    "beta": 1.0,          # Sensibilidade ao sinal
-    "phi": 0.2,           # Partial adjustment
+    "beta": 1.0,
+    "phi": 0.2,
 
-    # Tâtonnement
-    "tatonnement_K": 50,  # Iterações
-    "tatonnement_eta": 0.2,  # Tamanho do passo
+    "tatonnement_K": 50,
+    "tatonnement_eta": 0.2,
 }
 ```
 
 ### Execução
 
 ```bash
-# Correr experiência completa
 python run.py
 ```
 
@@ -533,10 +512,8 @@ results_new_model/
 ### Dashboard Interativo (SolaraViz)
 
 ```bash
-# Primeiro, gerar os resultados
 python run.py
 
-# Depois, lançar o dashboard
 solara run app.py
 ```
 
