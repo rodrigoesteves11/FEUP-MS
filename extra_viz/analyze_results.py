@@ -2,14 +2,18 @@
 Analyze aggregated results from run.py (30 seeds x 3 policies = 90 simulations)
 Creates comprehensive statistical analysis and visualizations
 """
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 import numpy as np
 
-def load_results(csv_path="../results_new_model/kpi_results.csv"):
-    """Load the KPI results from run.py"""
+def load_results(csv_path=None):
+    """Load the KPI results from run.py (path robust to CWD)."""
+    if csv_path is None:
+        base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        csv_path = os.path.join(base, 'results_new_model', 'kpi_results.csv')
     df = pd.read_csv(csv_path)
     print(f"Loaded {len(df)} simulation results")
     print(f"Policies: {df['policy'].unique()}")
@@ -17,8 +21,10 @@ def load_results(csv_path="../results_new_model/kpi_results.csv"):
     return df
 
 def create_comprehensive_analysis(df, output_dir="analysis_results"):
-    """Create comprehensive analysis with multiple visualizations"""
-    
+    """Create comprehensive analysis with multiple visualizations (writes under extra_viz/analysis_results)."""
+    base = os.path.dirname(__file__)
+    out_dir = os.path.join(base, output_dir)
+    os.makedirs(out_dir, exist_ok=True)
 
     print("\n[1/5] Creating boxplots...")
     fig, axes = plt.subplots(3, 3, figsize=(15, 12))
@@ -60,9 +66,9 @@ def create_comprehensive_analysis(df, output_dir="analysis_results"):
         ax.tick_params(axis='x', rotation=45)
     
     plt.tight_layout()
-    plt.savefig(f"{output_dir}/analysis_boxplots.png", dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(out_dir, "analysis_boxplots.png"), dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"   Saved: {output_dir}/analysis_boxplots.png")
+    print(f"   Saved: {os.path.join(out_dir, 'analysis_boxplots.png')}")
     
 
     print("[2/5] Creating distributions...")
@@ -75,7 +81,7 @@ def create_comprehensive_analysis(df, output_dir="analysis_results"):
         ('volume_mean', 'Mean Volume'),
         ('gini_mean', 'Mean Gini'),
         ('max_drawdown', 'Max Drawdown'),
-        ('n_crashes_ret', 'Number of Crashes')
+        ('crash_episodes_ret', 'Crash Episodes')
     ]
     
     for idx, (kpi_col, kpi_name) in enumerate(key_kpis):
@@ -92,9 +98,9 @@ def create_comprehensive_analysis(df, output_dir="analysis_results"):
         ax.grid(alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(f"{output_dir}/analysis_distributions.png", dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(out_dir, "analysis_distributions.png"), dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"   Saved: {output_dir}/analysis_distributions.png")
+    print(f"   Saved: {os.path.join(out_dir, 'analysis_distributions.png')}")
     
 
     print("[3/5] Creating statistics table...")
@@ -130,9 +136,9 @@ def create_comprehensive_analysis(df, output_dir="analysis_results"):
     
     plt.title('Statistical Summary: Mean ± Std (30 seeds each)', 
               fontsize=14, fontweight='bold', pad=20)
-    plt.savefig(f"{output_dir}/analysis_statistics.png", dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(out_dir, "analysis_statistics.png"), dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"   Saved: {output_dir}/analysis_statistics.png")
+    print(f"   Saved: {os.path.join(out_dir, 'analysis_statistics.png')}")
     
 
     print("[4/5] Running statistical tests...")
@@ -182,13 +188,13 @@ def create_comprehensive_analysis(df, output_dir="analysis_results"):
     
     plt.title('Statistical Significance Tests (Mann-Whitney U)\n*** p<0.001  ** p<0.01  * p<0.05  ns = not significant',
               fontsize=12, fontweight='bold', pad=20)
-    plt.savefig(f"{output_dir}/analysis_significance.png", dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(out_dir, "analysis_significance.png"), dpi=150, bbox_inches='tight')
     plt.close()
-    print(f"   Saved: {output_dir}/analysis_significance.png")
+    print(f"   Saved: {os.path.join(out_dir, 'analysis_significance.png')}")
     
 
     print("[5/5] Creating text report...")
-    with open(f"{output_dir}/analysis_report.txt", 'w') as f:
+    with open(os.path.join(out_dir, "analysis_report.txt"), 'w') as f:
         f.write("="*70 + "\n")
         f.write("MARKET ABM - STATISTICAL ANALYSIS REPORT\n")
         f.write("="*70 + "\n")
@@ -204,12 +210,12 @@ def create_comprehensive_analysis(df, output_dir="analysis_results"):
                 f.write(f"  {policy.upper():12s}: {np.mean(data):10.4f} ± {np.std(data):8.4f} ")
                 f.write(f"[min={np.min(data):.4f}, max={np.max(data):.4f}]\n")
     
-    print(f"   Saved: {output_dir}/analysis_report.txt")
+    print(f"   Saved: {os.path.join(out_dir, 'analysis_report.txt')}")
     
     print("\n" + "="*70)
     print("ANALYSIS COMPLETE!")
     print("="*70)
-    print(f"Created 5 output files in '{output_dir}/':")
+    print(f"Created 5 output files in '{out_dir}/':")
     print(f"  1. analysis_boxplots.png      - Boxplot comparison of all KPIs")
     print(f"  2. analysis_distributions.png - Histograms for key KPIs")
     print(f"  3. analysis_statistics.png    - Table with mean ± std")

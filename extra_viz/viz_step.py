@@ -11,6 +11,11 @@ from matplotlib.gridspec import GridSpec
 import numpy as np
 import os
 import time
+import sys
+
+PARENT_DIR = os.path.dirname(os.path.dirname(__file__))
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
 
 from model import MarketModel, POLICY_PRESETS
 

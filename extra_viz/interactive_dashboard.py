@@ -7,14 +7,18 @@ filtrar por política, ver seeds individuais, zoom, hover, etc.
 Requer: plotly
 Instalar: pip install plotly
 """
+import os
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
 
 
-def load_results(csv_path="../results_new_model/kpi_results.csv"):
-    """Load the KPI results from run.py"""
+def load_results(csv_path=None):
+    """Load the KPI results from run.py (path robust to CWD)."""
+    if csv_path is None:
+        base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        csv_path = os.path.join(base, 'results_new_model', 'kpi_results.csv')
     df = pd.read_csv(csv_path)
     print(f"Loaded {len(df)} simulation results")
     return df
@@ -108,12 +112,12 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
         fig.add_trace(
             go.Scatter(
                 x=df_policy['vol_mean'], 
-                y=df_policy['n_crashes_ret'],
+                y=df_policy['crash_episodes_ret'],
                 mode='markers',
                 name=policy.upper(),
                 marker=dict(size=8, color=colors[policy], opacity=0.7),
                 text=[f"Seed: {s}" for s in df_policy['seed']],
-                hovertemplate='<b>%{text}</b><br>Volatility: %{x:.4f}<br>Crashes: %{y}<extra></extra>',
+                hovertemplate='<b>%{text}</b><br>Volatility: %{x:.4f}<br>Crash episodes: %{y}<extra></extra>',
                 showlegend=False,
                 legendgroup=policy
             ),
@@ -245,7 +249,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
     fig.update_yaxes(title_text="Volume", row=2, col=1)
     fig.update_yaxes(title_text="Turnover", row=2, col=2)
     fig.update_yaxes(title_text="Max Drawdown", row=2, col=3)
-    fig.update_yaxes(title_text="# Crashes", row=3, col=1)
+    fig.update_yaxes(title_text="Crash episodes", row=3, col=1)
     fig.update_yaxes(title_text="Gini", row=3, col=2)
     fig.update_yaxes(title_text="Volume", row=3, col=3)
     fig.update_yaxes(title_text="Volatility", row=4, col=2)
@@ -264,6 +268,7 @@ def create_interactive_dashboard(df, output_file="dashboard/interactive_dashboar
             'scale': 2
         }
     }
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     fig.write_html(output_file, config=config)
     print(f"\n✅ Interactive dashboard saved: {output_file}")
     print(f"\n🌐 Como usar no browser:")
@@ -398,6 +403,7 @@ def create_individual_seed_viewer(df, output_file="dashboard/seed_explorer.html"
             'scale': 2
         }
     }
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     fig.write_html(output_file, config=config)
     print(f" Seed explorer saved: {output_file}")
     print(f"   Use para identificar seeds interessantes e depois correr:")

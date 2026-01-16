@@ -1,3 +1,8 @@
 mesa[rec]
 seaborn
 solara
+pandas
+numpy
+matplotlib
+plotly
+scipy
